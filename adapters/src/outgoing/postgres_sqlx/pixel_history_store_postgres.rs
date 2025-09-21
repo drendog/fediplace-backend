@@ -1,4 +1,7 @@
-use domain::{action::PaintAction, coords::TileCoord};
+use domain::{
+    action::PaintAction,
+    coords::{GlobalCoord, TileCoord},
+};
 use sqlx::{PgPool, types::time::OffsetDateTime};
 use std::{future::Future, time::Duration};
 use tokio::time::timeout;
@@ -7,7 +10,7 @@ use uuid::Uuid;
 
 use fedi_wplace_application::{
     error::{AppError, AppResult},
-    ports::outgoing::pixel_history_store::{PixelHistoryEntry, PixelHistoryStorePort},
+    ports::outgoing::pixel_history_store::{PixelHistoryEntry, PixelHistoryStorePort, PixelInfo},
 };
 
 pub struct PostgresPixelHistoryStoreAdapter {
@@ -232,5 +235,49 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
         let count = result.count.unwrap_or(0);
         tracing::debug!("Retrieved distinct tile count: {}", count);
         Ok(count)
+    }
+
+    #[instrument(skip(self))]
+    async fn get_pixel_info(&self, coord: GlobalCoord) -> AppResult<Option<PixelInfo>> {
+        let pixel_info = self
+            .execute_with_timeout(
+                || {
+                    sqlx::query!(
+                        r#"
+                        SELECT
+                            ph.user_id,
+                            u.username,
+                            ph.color_id,
+                            ph.created_at
+                        FROM pixel_history ph
+                        JOIN users u ON ph.user_id = u.id
+                        WHERE ph.global_x = $1 AND ph.global_y = $2
+                        "#,
+                        coord.x,
+                        coord.y
+                    )
+                    .fetch_optional(&self.pool)
+                },
+                &format!(
+                    "Failed to get pixel info for coordinates ({}, {})",
+                    coord.x, coord.y
+                ),
+            )
+            .await?;
+
+        let result = pixel_info.map(|row| PixelInfo {
+            user_id: row.user_id,
+            username: row.username,
+            color_id: row.color_id as u8,
+            timestamp: row.created_at,
+        });
+
+        tracing::debug!(
+            "Retrieved pixel info for coordinates ({}, {}): {}",
+            coord.x,
+            coord.y,
+            result.is_some()
+        );
+        Ok(result)
     }
 }

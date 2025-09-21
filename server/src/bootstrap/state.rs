@@ -33,7 +33,8 @@ use fedi_wplace_adapters::{
 use fedi_wplace_application::error::AppError;
 use fedi_wplace_application::infrastructure_config::{Config, EmailBackend};
 use fedi_wplace_application::ports::incoming::tiles::{
-    MetricsQueryUseCase, PaintPixelsUseCase, PixelHistoryQueryUseCase, TilesQueryUseCase,
+    MetricsQueryUseCase, PaintPixelsUseCase, PixelHistoryQueryUseCase, PixelInfoQueryUseCase,
+    TilesQueryUseCase,
 };
 use fedi_wplace_application::ports::outgoing::{
     credit_store::CreditStorePort, email_sender::EmailSenderPort, events::EventsPort,
@@ -280,6 +281,7 @@ impl AppState {
             Arc::clone(&self.tile_service) as Arc<dyn PaintPixelsUseCase + Send + Sync>,
             Arc::clone(&self.tile_service) as Arc<dyn MetricsQueryUseCase + Send + Sync>,
             Arc::clone(&self.tile_service) as Arc<dyn PixelHistoryQueryUseCase + Send + Sync>,
+            Arc::clone(&self.tile_service) as Arc<dyn PixelInfoQueryUseCase + Send + Sync>,
             self.subscription_service,
             self.auth_service,
             self.ws_broadcast,

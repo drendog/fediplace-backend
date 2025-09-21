@@ -1,12 +1,12 @@
 use crate::{
     error::AppResult,
-    ports::outgoing::pixel_history_store::PixelHistoryEntry,
+    ports::outgoing::pixel_history_store::{PixelHistoryEntry, PixelInfo},
     tiles::{commands::PaintingResult, gateway::TileVersionResult},
 };
 use domain::{
     auth::UserId,
     color::ColorId,
-    coords::{PixelCoord, TileCoord},
+    coords::{GlobalCoord, PixelCoord, TileCoord},
     tile::TileVersion,
 };
 
@@ -35,4 +35,9 @@ pub trait MetricsQueryUseCase: Send + Sync {
 #[async_trait::async_trait]
 pub trait PixelHistoryQueryUseCase: Send + Sync {
     async fn get_history_for_tile(&self, coord: TileCoord) -> AppResult<Vec<PixelHistoryEntry>>;
+}
+
+#[async_trait::async_trait]
+pub trait PixelInfoQueryUseCase: Send + Sync {
+    async fn get_pixel_info(&self, coord: GlobalCoord) -> AppResult<Option<PixelInfo>>;
 }

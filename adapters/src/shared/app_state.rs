@@ -13,7 +13,10 @@ use domain::events::TileVersionEvent;
 use fedi_wplace_application::ports::incoming::{
     auth::AuthUseCase,
     subscriptions::SubscriptionUseCase,
-    tiles::{MetricsQueryUseCase, PaintPixelsUseCase, PixelHistoryQueryUseCase, TilesQueryUseCase},
+    tiles::{
+        MetricsQueryUseCase, PaintPixelsUseCase, PixelHistoryQueryUseCase, PixelInfoQueryUseCase,
+        TilesQueryUseCase,
+    },
 };
 
 #[derive(Clone)]
@@ -24,6 +27,7 @@ pub struct AppState {
     pub paint_pixels_service: Arc<dyn PaintPixelsUseCase + Send + Sync>,
     pub metrics_query_service: Arc<dyn MetricsQueryUseCase + Send + Sync>,
     pub pixel_history_query_service: Arc<dyn PixelHistoryQueryUseCase + Send + Sync>,
+    pub pixel_info_query_service: Arc<dyn PixelInfoQueryUseCase + Send + Sync>,
     pub subscription_service: Arc<dyn SubscriptionUseCase + Send + Sync>,
     pub auth_use_case: Arc<dyn AuthUseCase + Send + Sync>,
     pub ws_broadcast: broadcast::Sender<TileVersionEvent>,
@@ -40,6 +44,7 @@ impl AppState {
         paint_pixels_service: Arc<dyn PaintPixelsUseCase + Send + Sync>,
         metrics_query_service: Arc<dyn MetricsQueryUseCase + Send + Sync>,
         pixel_history_query_service: Arc<dyn PixelHistoryQueryUseCase + Send + Sync>,
+        pixel_info_query_service: Arc<dyn PixelInfoQueryUseCase + Send + Sync>,
         subscription_service: Arc<dyn SubscriptionUseCase + Send + Sync>,
         auth_use_case: Arc<dyn AuthUseCase + Send + Sync>,
         ws_broadcast: broadcast::Sender<TileVersionEvent>,
@@ -53,6 +58,7 @@ impl AppState {
             paint_pixels_service,
             metrics_query_service,
             pixel_history_query_service,
+            pixel_info_query_service,
             subscription_service,
             auth_use_case,
             ws_broadcast,

@@ -20,7 +20,7 @@ use dto::requests::{
 #[cfg(feature = "docs")]
 use dto::responses::{ApiResponseUser, ApiResponseValue};
 use dto::responses::{
-    PaintOkEnvelope, PaintPixelResponse, PixelHistoryEntry, TileImageResponse, UserResponse,
+    PaintOkEnvelope, PaintPixelResponse, PixelHistoryEntry, PixelInfoResponse, TileImageResponse, UserResponse,
 };
 use handlers::palette::{PaletteEntry, PaletteResponse, SpecialColorEntry};
 use utoipa::OpenApi;
@@ -31,8 +31,8 @@ use utoipa::OpenApi;
         handlers::tiles::serve_tile,
         handlers::tiles::serve_tile_head,
         handlers::tiles::paint_pixels_batch,
-        handlers::history::get_tile_history,
         handlers::palette::get_palette,
+        handlers::pixel_info::get_pixel_info,
         handlers::health::health_check,
         handlers::auth::register_handler,
         handlers::auth::login_handler,
@@ -61,6 +61,7 @@ use utoipa::OpenApi;
             AuthRequest,
             UserResponse,
             PixelHistoryEntry,
+            PixelInfoResponse,
             RgbColor,
             TileCoord,
             PixelCoord,
@@ -85,6 +86,7 @@ use utoipa::OpenApi;
         (name = "tiles", description = "Tile management operations - serve WebP tile images with caching and rate limiting"),
         (name = "painting", description = "Pixel painting operations - place pixels on tiles with rate limiting and backoff guidance"),
         (name = "palette", description = "Color palette management - retrieve available colors for pixel painting"),
+        (name = "pixel", description = "Pixel information operations - retrieve metadata about individual pixels"),
         (name = "auth", description = "Authentication and user management - register, login, logout, and user profile operations"),
         (name = "system", description = "System health and status monitoring"),
         (name = "websocket", description = "Real-time WebSocket protocol for collaborative pixel painting. Supports tile subscriptions, live updates, configurable IP-based limits, FIFO eviction policy, and rate limiting for both connection upgrades and individual messages.")

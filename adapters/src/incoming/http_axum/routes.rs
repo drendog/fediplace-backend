@@ -25,8 +25,8 @@ use crate::{
                 update_username_handler, verify_email_handler,
             },
             health::health_check,
-            history::get_tile_history,
             palette::get_palette,
+            pixel_info::get_pixel_info,
             tiles::{paint_pixels_batch, serve_tile, serve_tile_head},
         },
         middleware::{
@@ -62,6 +62,7 @@ fn build_core_routes() -> Router<AppState> {
     let router = Router::new()
         .route("/health", get(health_check))
         .route("/palette", get(get_palette))
+        .route("/pixel/{x}/{y}", get(get_pixel_info))
         .route("/live", get(websocket_handler));
 
     #[cfg(feature = "docs")]
@@ -79,8 +80,8 @@ fn build_tile_routes_with_auth(
     state: &AppState,
     auth_layer: AuthManagerLayer<AuthBackend, RedisStore<Client>>,
 ) -> Router<AppState> {
-    let tile_routes = create_base_tile_routes();
-    let paint_routes = create_base_paint_routes();
+    let tile_routes = Router::new().route("/tiles/{x}/{y}", get(serve_tile).head(serve_tile_head));
+    let paint_routes = Router::new().route("/tiles/{x}/{y}/pixels", post(paint_pixels_batch));
 
     let tile_routes_final = if state.config.rate_limit.enabled {
         let tile_limiter = create_tile_rate_limiter(&state.config.rate_limit);
@@ -102,16 +103,6 @@ fn build_tile_routes_with_auth(
     };
 
     tile_routes_final.merge(paint_routes_final)
-}
-
-fn create_base_tile_routes() -> Router<AppState> {
-    Router::new()
-        .route("/tiles/{x}/{y}", get(serve_tile).head(serve_tile_head))
-        .route("/tiles/{x}/{y}/history", get(get_tile_history))
-}
-
-fn create_base_paint_routes() -> Router<AppState> {
-    Router::new().route("/tiles/{x}/{y}/pixels", post(paint_pixels_batch))
 }
 
 async fn build_auth_routes(

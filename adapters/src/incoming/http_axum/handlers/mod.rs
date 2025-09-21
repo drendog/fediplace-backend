@@ -4,5 +4,5 @@ pub(crate) mod palette;
 // keep public for OpenAPI docs
 pub mod auth;
 pub mod health;
-pub mod history;
+pub mod pixel_info;
 pub mod tiles;

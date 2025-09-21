@@ -5,7 +5,7 @@ use domain::{
     action::PaintAction,
     auth::UserId,
     color::ColorId,
-    coords::{PixelCoord, TileCoord},
+    coords::{GlobalCoord, PixelCoord, TileCoord},
     credits::CreditConfig,
     events::TileVersionEvent,
     tile::{PaletteBufferPool, Tile, TileVersion},
@@ -16,13 +16,14 @@ use crate::{
     error::AppResult,
     ports::{
         incoming::tiles::{
-            MetricsQueryUseCase, PaintPixelsUseCase, PixelHistoryQueryUseCase, TilesQueryUseCase,
+            MetricsQueryUseCase, PaintPixelsUseCase, PixelHistoryQueryUseCase,
+            PixelInfoQueryUseCase, TilesQueryUseCase,
         },
         outgoing::{
             credit_store::DynCreditStorePort,
             events::DynEventsPort,
             image_codec::DynImageCodecPort,
-            pixel_history_store::{DynPixelHistoryStorePort, PixelHistoryEntry},
+            pixel_history_store::{DynPixelHistoryStorePort, PixelHistoryEntry, PixelInfo},
             task_spawn::DynTaskSpawnPort,
             tile_cache::DynTileCachePort,
             timeout::DynWebPTimeoutPort,
@@ -252,5 +253,13 @@ impl PixelHistoryQueryUseCase for TileService {
     async fn get_history_for_tile(&self, coord: TileCoord) -> AppResult<Vec<PixelHistoryEntry>> {
         coord.validate_bounds()?;
         self.pixel_history_store.get_history_for_tile(coord).await
+    }
+}
+
+#[async_trait::async_trait]
+impl PixelInfoQueryUseCase for TileService {
+    async fn get_pixel_info(&self, coord: GlobalCoord) -> AppResult<Option<PixelInfo>> {
+        coord.validate()?;
+        self.pixel_history_store.get_pixel_info(coord).await
     }
 }

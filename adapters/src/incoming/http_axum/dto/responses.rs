@@ -218,3 +218,28 @@ pub struct PixelHistoryEntry {
     #[cfg_attr(feature = "docs", schema(example = "2023-01-01T12:00:00Z"))]
     pub timestamp: String,
 }
+
+#[cfg_attr(feature = "docs", derive(ToSchema))]
+#[cfg_attr(feature = "docs", schema(
+    description = "Information about a specific pixel",
+    example = json!({
+        "user_id": "550e8400-e29b-41d4-a716-446655440000",
+        "username": "johndoe",
+        "color_id": 5,
+        "timestamp": "2023-01-01T12:00:00Z"
+    })
+))]
+#[derive(Debug, Clone, Serialize)]
+pub struct PixelInfoResponse {
+    #[cfg_attr(
+        feature = "docs",
+        schema(example = "550e8400-e29b-41d4-a716-446655440000")
+    )]
+    pub user_id: Uuid,
+    #[cfg_attr(feature = "docs", schema(example = "johndoe"))]
+    pub username: String,
+    #[cfg_attr(feature = "docs", schema(example = 5))]
+    pub color_id: u8,
+    #[cfg_attr(feature = "docs", schema(example = "2023-01-01T12:00:00Z"))]
+    pub timestamp: String,
+}
