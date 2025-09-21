@@ -1,0 +1,24 @@
+# Rust build artifacts
+/target
+.sqlx
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+
+# Local configuration
+config.toml
+config.*.toml
+!config.toml.example

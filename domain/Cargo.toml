@@ -1,0 +1,19 @@
+[package]
+name = "domain"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+
+[features]
+docs = ["utoipa"]
+
+[dependencies]
+crossbeam-queue = "0.3"
+serde.workspace = true
+thiserror.workspace = true
+time.workspace = true
+utoipa = { workspace = true, optional = true }
+uuid.workspace = true
+
+[lints]
+workspace = true

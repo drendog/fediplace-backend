@@ -1,0 +1,8 @@
+disallowed-types = [
+  "tokio::runtime::Runtime",
+  "axum::Router",
+  "sqlx::Pool",
+  "deadpool_redis::Pool",
+  "image::DynamicImage",
+]
+disallowed-methods = ["tokio::spawn"]

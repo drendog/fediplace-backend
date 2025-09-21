@@ -1,0 +1,270 @@
+[environment]
+env = "development"
+
+[server]
+host = "0.0.0.0"
+port = 8000
+# cors_origin = "http://127.0.0.1:8000"
+# cors_origin = "http://127.0.0.1:4321"
+
+[tiles]
+tile_size = 256
+pixel_size = 1
+buffer_pool_max_size = 16
+http_cache_control = "public, max-age=500, must-revalidate"
+
+[tiles.cache_ttl]
+redis_current_ttl_seconds = 600
+redis_webp_ttl_seconds = 3600
+redis_rgba_ttl_seconds = 14400
+redis_missing_sentinel_ttl_seconds = 45
+jitter_min_percent = 10
+jitter_max_percent = 20
+
+[db]
+database_url = "postgresql://fediplace:dev_password@localhost:5432/fediplace"
+pool_size = 10
+
+[redis]
+redis_url = "redis://localhost:6379"
+
+[websocket]
+broadcast_buffer_size = 1000
+# max_connections = 1000  # Uncomment to limit WebSocket connections
+connection_buffer_size = 100
+drop_newest_on_full_buffer = false
+
+[ws_policy]
+max_tiles_per_ip = 64
+subscription_ttl_secs = 45
+heartbeat_refresh_secs = 15
+
+[rate_limit]
+enabled = true
+# Rate limiting per IP address (requests per minute)
+paint_requests_per_minute = 60
+tile_requests_per_minute = 300
+global_requests_per_minute = 1000
+websocket_messages_per_minute = 120
+auth_requests_per_minute = 5
+burst_size_multiplier = 2
+
+[credits]
+# Credit system configuration
+max_charges = 30
+charge_cooldown_seconds = 60
+initial_charges = 30
+
+[logging]
+level = "debug"
+format = "pretty"        # Options: "pretty" or "json"
+include_location = false
+
+[color_palette]
+colors = [
+    [
+        109,
+        0,
+        26,
+    ],
+    [
+        190,
+        0,
+        57,
+    ],
+    [
+        255,
+        69,
+        0,
+    ],
+    [
+        255,
+        168,
+        0,
+    ],
+    [
+        255,
+        214,
+        53,
+    ],
+    [
+        255,
+        248,
+        184,
+    ],
+    [
+        0,
+        163,
+        104,
+    ],
+    [
+        0,
+        204,
+        120,
+    ],
+    [
+        126,
+        237,
+        86,
+    ],
+    [
+        0,
+        117,
+        111,
+    ],
+    [
+        0,
+        158,
+        170,
+    ],
+    [
+        0,
+        204,
+        192,
+    ],
+    [
+        36,
+        80,
+        164,
+    ],
+    [
+        54,
+        144,
+        234,
+    ],
+    [
+        81,
+        233,
+        244,
+    ],
+    [
+        73,
+        58,
+        193,
+    ],
+    [
+        106,
+        92,
+        255,
+    ],
+    [
+        148,
+        179,
+        255,
+    ],
+    [
+        129,
+        30,
+        159,
+    ],
+    [
+        180,
+        74,
+        192,
+    ],
+    [
+        228,
+        171,
+        255,
+    ],
+    [
+        222,
+        16,
+        127,
+    ],
+    [
+        255,
+        56,
+        129,
+    ],
+    [
+        255,
+        153,
+        170,
+    ],
+    [
+        109,
+        72,
+        47,
+    ],
+    [
+        156,
+        105,
+        38,
+    ],
+    [
+        255,
+        180,
+        112,
+    ],
+    [
+        0,
+        0,
+        0,
+    ],
+    [
+        81,
+        82,
+        82,
+    ],
+    [
+        137,
+        141,
+        144,
+    ],
+    [
+        212,
+        215,
+        217,
+    ],
+    [
+        255,
+        255,
+        255,
+    ],
+]
+
+special_colors = ["transparency"]
+
+[auth]
+cookie_name = "sid"
+cookie_secure = false  # Set to true in production with HTTPS
+session_secret = "CHANGE_THIS_TO_A_SECURE_RANDOM_STRING_AT_LEAST_64_BYTES_LONG_FOR_PRODUCTION"
+public_base_url = "http://localhost:4321"
+# Frontend URLs for OAuth redirects
+frontend_success_url = "http://localhost:4321/"
+frontend_error_url = "http://localhost:4321/login?error=auth_failed"
+# Google OAuth - Configure in config.secrets.toml
+# google_client_id = ""
+# google_client_secret = ""
+google_redirect_url = "http://localhost:8000/auth/google/callback"
+
+[auth.argon2]
+# Argon2 password hashing parameters
+memory_cost = 19456
+time_cost = 2
+parallelism = 1
+output_length = 32
+
+[auth.email]
+email_backend = "console" # Options: "console" or "smtp"
+
+[auth.email.smtp]
+# SMTP configuration (only used when email_backend = "smtp")
+# For self-hosted Postfix container (default setup):
+host = "localhost"
+port = 1587
+username = ""
+password = ""
+from_email = "noreply@localhost"
+from_name = "FediPlace"
+use_tls = true
+
+# Alternative: External SMTP service (e.g., Gmail, SendGrid)
+# host = "smtp.gmail.com"
+# port = 587
+# username = "your_email@gmail.com"
+# password = "your_app_password"
+# from_email = "noreply@yourfediplace.com"
+# from_name = "FediPlace"
+# use_tls = true

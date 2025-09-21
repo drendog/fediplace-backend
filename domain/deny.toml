@@ -1,0 +1,13 @@
+[bans]
+deny = [
+  { name = "tokio" },
+  { name = "axum" },
+  { name = "sqlx" },
+  { name = "deadpool-redis" },
+  { name = "image" },
+  { name = "tower" },
+  { name = "tower-http" },
+]
+
+[licenses]
+allow = ["MIT", "Apache-2.0", "AGPL-3.0", "Unicode-3.0"]

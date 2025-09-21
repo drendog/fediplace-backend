@@ -1,0 +1,46 @@
+[package]
+name = "server"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+docs = [
+    "utoipa",
+    "utoipa-swagger-ui",
+    "utoipa-swagger-ui/axum",
+    "utoipa/axum_extras",
+    "utoipa/uuid",
+]
+
+[dependencies]
+axum.workspace = true
+axum-login.workspace = true
+deadpool-redis.workspace = true
+domain = { path = "../domain" }
+dotenvy.workspace = true
+fedi-wplace-adapters = { path = "../adapters" }
+fedi_wplace_application = { path = "../application", package = "fedi-wplace-application" }
+figment.workspace = true
+image.workspace = true
+oauth2.workspace = true
+rand.workspace = true
+reqwest.workspace = true
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+tower-sessions.workspace = true
+tower-sessions-redis-store.workspace = true
+tracing.workspace = true
+tracing-bunyan-formatter.workspace = true
+tracing-subscriber.workspace = true
+url.workspace = true
+utoipa = { workspace = true, optional = true }
+utoipa-swagger-ui = { workspace = true, optional = true }
+
+[lints]
+workspace = true

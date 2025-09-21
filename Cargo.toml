@@ -1,0 +1,104 @@
+[workspace]
+members = ["adapters", "application", "domain", "server"]
+resolver = "2"
+package.license = "AGPL-3.0-or-later"
+package.description = "FediPlace collaborative pixel painting server"
+package.repository = "https://github.com/drendog/fediplace-backend"
+package.readme = "README.md"
+package.keywords = [
+    "collaborative",
+    "r-place",
+    "painting",
+    "federation",
+    "hexagonal-architecture",
+]
+package.categories = [
+    "web-programming::http-server",
+    "web-programming::websocket",
+    "games",
+]
+
+[workspace.dependencies]
+argon2 = "0.5.3"
+async-trait = "0.1"
+axum = { version = "0.8.4", features = ["ws"] }
+axum-login = "0.18.0"
+deadpool-redis = { version = "0.22.0", features = ["script"] }
+dotenvy = "0.15"
+figment = { version = "0.10.19", features = ["json", "toml", "env"] }
+image = { version = "0.25.6", features = ["webp"] }
+lettre = { version = "0.11", default-features = false, features = [
+    "smtp-transport",
+    "pool",
+    "hostname",
+    "builder",
+    "tokio1-rustls-tls",
+] }
+oauth2 = "5.0.0"
+password-hash = "0.5.0"
+rand = "0.9.2"
+reqwest = { version = "0.12.8", default-features = false, features = [
+    "rustls-tls",
+    "json",
+] }
+secrecy = "0.10"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.143"
+serde_with = "3.11.0"
+sqlx = { version = "0.8.6", features = [
+    "runtime-tokio-rustls",
+    "postgres",
+    "uuid",
+    "time",
+    "macros",
+    "migrate",
+] }
+thiserror = "2.0.16"
+time = "0.3.43"
+tokio = { version = "1.47.1", features = ["full", "signal"] }
+tower = "0.5.2"
+tower-http = { version = "0.6.6", features = ["trace", "cors"] }
+tower-sessions = "0.14.0"
+tower-sessions-redis-store = "0.16.0"
+tracing = "0.1.41"
+tracing-bunyan-formatter = "0.3.9"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+url = "2.5"
+utoipa = { version = "5.3.1", features = ["axum_extras", "uuid"] }
+utoipa-swagger-ui = { version = "9.0.2", features = ["axum"] }
+uuid = { version = "1.18.1", features = ["v4", "serde"] }
+zxcvbn = "3.1"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+disallowed_types = "deny"
+disallowed_methods = "deny"
+pub_use = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+exit = "deny"
+redundant_clone = "deny"
+clone_on_ref_ptr = "deny"
+vec_box = "deny"
+large_enum_variant = "deny"
+await_holding_lock = "deny"
+future_not_send = "deny"
+cognitive_complexity = "deny"
+needless_collect = "deny"
+let_underscore_must_use = "deny"
+absolute_paths = "deny"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+cast_possible_truncation = "allow"
+uninlined_format_args = "allow"
+cast_possible_wrap = "allow"
+cast_sign_loss = "allow"

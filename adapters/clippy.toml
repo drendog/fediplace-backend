@@ -1,0 +1,5 @@
+disallowed-types = [
+  "fedi_wplace_application::tiles::service::TileService",
+  "fedi_wplace_application::subscriptions::service::SubscriptionService",
+]
+disallowed-methods = []

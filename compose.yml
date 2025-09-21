@@ -1,0 +1,68 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fediplace-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-fediplace}
+      POSTGRES_USER: ${POSTGRES_USER:-fediplace}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - fediplace
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fediplace} -d ${POSTGRES_DB:-fediplace}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: fediplace-redis
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - fediplace
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postfix:
+    image: postfix:latest
+    container_name: fediplace-postfix
+    environment:
+      HOSTNAME: ${MAIL_DOMAIN:-localhost}
+      ALLOWED_SENDER_DOMAINS: ${MAIL_DOMAIN:-localhost}
+      # Allow relaying from the Docker network
+      RELAYHOST_USERNAME: ${SMTP_USER:-fediplace}
+      RELAYHOST_PASSWORD: ${SMTP_PASSWORD:-fediplace_password}
+    ports:
+      - "1025:25"
+      - "1587:587"
+    networks:
+      - fediplace
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  fediplace:
+    driver: bridge

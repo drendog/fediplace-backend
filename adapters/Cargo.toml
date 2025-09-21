@@ -1,0 +1,51 @@
+[package]
+name = "fedi-wplace-adapters"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+docs = ["utoipa", "utoipa-swagger-ui"]
+
+[dependencies]
+argon2.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+axum-extra = { version = "0.10.1", features = ["typed-header"] }
+axum-login.workspace = true
+axum-valid = { version = "0.24", features = ["validator", "422"] }
+dashmap = "6.1.0"
+deadpool-redis.workspace = true
+domain = { path = "../domain" }
+dotenvy.workspace = true
+fedi_wplace_application = { path = "../application", package = "fedi-wplace-application" }
+figment.workspace = true
+futures = "0.3.31"
+image.workspace = true
+lettre.workspace = true
+oauth2.workspace = true
+password-hash.workspace = true
+rand.workspace = true
+reqwest.workspace = true
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_with = "3"
+sqlx.workspace = true
+thiserror.workspace = true
+time.workspace = true
+tokio.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+tower-sessions.workspace = true
+tower-sessions-redis-store.workspace = true
+tracing.workspace = true
+tracing-bunyan-formatter.workspace = true
+tracing-subscriber.workspace = true
+url.workspace = true
+utoipa = { workspace = true, optional = true }
+utoipa-swagger-ui = { workspace = true, optional = true }
+uuid.workspace = true
+validator = { version = "0.20.0", features = ["derive"] }
+
+[lints]
+workspace = true
