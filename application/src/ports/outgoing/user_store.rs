@@ -34,6 +34,12 @@ pub trait UserStorePort: Send + Sync {
     ) -> AppResult<()>;
     async fn verify_user_by_token(&self, token: &str) -> AppResult<UserPublic>;
     async fn update_username(&self, user_id: Uuid, new_username: &str) -> AppResult<UserPublic>;
+    async fn assign_role_to_user(
+        &self,
+        user_id: Uuid,
+        role_id: Uuid,
+        assigned_by: Uuid,
+    ) -> AppResult<UserPublic>;
 }
 
 pub type DynUserStorePort = Arc<dyn UserStorePort>;

@@ -43,9 +43,10 @@ use fedi_wplace_application::ports::outgoing::{
     tile_cache::TileCachePort, user_store::UserStorePort,
 };
 use fedi_wplace_application::{
+    admin::service::AdminService,
     auth::service::AuthService,
     config::TileSettings,
-    ports::incoming::{auth::AuthUseCase, subscriptions::SubscriptionUseCase},
+    ports::incoming::{admin::AdminUseCase, auth::AuthUseCase, subscriptions::SubscriptionUseCase},
     subscriptions::service::SubscriptionService,
     tiles::service::PaletteColorLookup,
     tiles::service::{TileService, TileServiceDeps},
@@ -59,6 +60,7 @@ pub struct AppState {
     pub tile_service: Arc<TileService>,
     pub subscription_service: Arc<dyn SubscriptionUseCase>,
     pub auth_service: Arc<dyn AuthUseCase>,
+    pub admin_service: Arc<dyn AdminUseCase>,
     pub ws_broadcast: broadcast::Sender<TileVersionEvent>,
     pub websocket_rate_limiter: Option<Arc<RateLimiter>>,
     pub active_websocket_connections: Arc<AtomicUsize>,
@@ -83,6 +85,7 @@ impl AppState {
 
         let subscription_service = Self::create_subscription_service(&config, &redis_pool);
         let auth_service = Self::create_auth_service(&config, &db_pool)?;
+        let admin_service = Self::create_admin_service(&db_pool)?;
 
         let websocket_rate_limiter = if config.rate_limit.enabled {
             Some(create_websocket_rate_limiter(&config.rate_limit))
@@ -97,6 +100,7 @@ impl AppState {
             tile_service,
             subscription_service,
             auth_service,
+            admin_service,
             ws_broadcast,
             websocket_rate_limiter,
             active_websocket_connections: Arc::new(AtomicUsize::new(0)),
@@ -247,6 +251,12 @@ impl AppState {
         )))
     }
 
+    fn create_admin_service(db_pool: &PgPool) -> Result<Arc<dyn AdminUseCase>, AppError> {
+        let user_store_port: Arc<dyn UserStorePort> =
+            Arc::new(PostgresUserStoreAdapter::new(db_pool.clone()));
+        Ok(Arc::new(AdminService::new(user_store_port)))
+    }
+
     pub fn db_pool(&self) -> &PgPool {
         &self.db_pool
     }
@@ -273,6 +283,7 @@ impl AppState {
         let password_hasher_port: Arc<dyn PasswordHasherPort> = Arc::new(
             Argon2PasswordHasher::from_config_or_default(&self.config.auth.argon2),
         );
+        let admin_service = Arc::new(AdminService::new(Arc::clone(&user_store_port)));
 
         let adapters_state = AdaptersAppState::new(
             self.config,
@@ -284,6 +295,7 @@ impl AppState {
             Arc::clone(&self.tile_service) as Arc<dyn PixelInfoQueryUseCase + Send + Sync>,
             self.subscription_service,
             self.auth_service,
+            admin_service,
             self.ws_broadcast,
             self.websocket_rate_limiter,
             self.active_websocket_connections,

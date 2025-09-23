@@ -20,6 +20,7 @@ use crate::{
             session::{SessionConfig, create_session_layer},
         },
         handlers::{
+            admin::assign_role_to_user,
             auth::{
                 login_handler, logout_handler, me_handler, register_handler,
                 update_username_handler, verify_email_handler,
@@ -30,10 +31,10 @@ use crate::{
             tiles::{paint_pixels_batch, serve_tile, serve_tile_head},
         },
         middleware::{
+            admin_auth::require_admin_role,
             rate_limit::{
                 create_auth_rate_limiter, create_paint_rate_limiter, create_tile_rate_limiter,
             },
-            admin_auth::require_admin_role,
             verification::require_email_verification,
         },
         router_ext::RouterExt,
@@ -57,7 +58,10 @@ pub async fn build_application_router(
     let tile_routes = build_tile_routes_with_auth(state, auth_layer.clone());
     let admin_routes = build_admin_routes_with_auth(auth_layer);
 
-    Ok(core_routes.merge(tile_routes).merge(auth_routes).merge(admin_routes))
+    Ok(core_routes
+        .merge(tile_routes)
+        .merge(auth_routes)
+        .merge(admin_routes))
 }
 
 fn build_core_routes() -> Router<AppState> {
@@ -111,6 +115,7 @@ fn build_admin_routes_with_auth(
 ) -> Router<AppState> {
     Router::new()
         .route("/health", get(health_check))
+        .route("/users/{user_id}/roles/{role_id}", put(assign_role_to_user))
         .layer(middleware::from_fn(require_admin_role))
         .with_auth(auth_layer)
 }

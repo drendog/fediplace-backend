@@ -509,4 +509,89 @@ impl UserStorePort for PostgresUserStoreAdapter {
                 message: "User was updated but could not be retrieved".to_string(),
             })
     }
+
+    #[instrument(skip(self))]
+    async fn assign_role_to_user(
+        &self,
+        user_id: Uuid,
+        role_id: Uuid,
+        assigned_by: Uuid,
+    ) -> AppResult<UserPublic> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| AppError::DatabaseError {
+                message: format!("Failed to begin transaction: {}", e),
+            })?;
+
+        let role_exists = sqlx::query!(
+            r#"
+            SELECT id FROM roles WHERE id = $1
+            "#,
+            role_id
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| AppError::DatabaseError {
+            message: format!("Failed to find role {}: {}", role_id, e),
+        })?
+        .is_some();
+
+        if !role_exists {
+            return Err(AppError::ValidationError {
+                message: format!("Role with id {} not found", role_id),
+            });
+        }
+
+        let user_exists = sqlx::query!(
+            r#"
+            SELECT id FROM users WHERE id = $1
+            "#,
+            user_id
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| AppError::DatabaseError {
+            message: format!("Failed to check if user exists: {}", e),
+        })?
+        .is_some();
+
+        if !user_exists {
+            return Err(AppError::ValidationError {
+                message: format!("User with id {} not found", user_id),
+            });
+        }
+
+        sqlx::query!(
+            r#"
+            INSERT INTO user_roles (user_id, role_id, assigned_by)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_id, role_id) DO NOTHING
+            "#,
+            user_id,
+            role_id,
+            assigned_by
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| AppError::DatabaseError {
+            message: format!("Failed to assign role to user: {}", e),
+        })?;
+
+        tx.commit().await.map_err(|e| AppError::DatabaseError {
+            message: format!("Failed to commit role assignment transaction: {}", e),
+        })?;
+
+        debug!(
+            "Successfully assigned role {} to user {} by user {}",
+            role_id, user_id, assigned_by
+        );
+
+        self.find_user_by_id(user_id)
+            .await?
+            .ok_or_else(|| AppError::DatabaseError {
+                message: "User role was assigned but user could not be retrieved".to_string(),
+            })
+    }
 }

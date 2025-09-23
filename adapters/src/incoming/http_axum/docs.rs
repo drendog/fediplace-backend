@@ -39,6 +39,7 @@ use utoipa::OpenApi;
         handlers::auth::logout_handler,
         handlers::auth::me_handler,
         handlers::auth::update_username_handler,
+        handlers::admin::assign_role_to_user,
         auth::oauth_google::google_auth_start,
         auth::oauth_google::google_auth_callback,
         endpoint::websocket_handler,
@@ -88,6 +89,7 @@ use utoipa::OpenApi;
         (name = "palette", description = "Color palette management - retrieve available colors for pixel painting"),
         (name = "pixel", description = "Pixel information operations - retrieve metadata about individual pixels"),
         (name = "auth", description = "Authentication and user management - register, login, logout, and user profile operations"),
+        (name = "admin", description = "Admin operations - role management and user administration (requires admin privileges)"),
         (name = "system", description = "System health and status monitoring"),
         (name = "websocket", description = "Real-time WebSocket protocol for collaborative pixel painting. Supports tile subscriptions, live updates, configurable IP-based limits, FIFO eviction policy, and rate limiting for both connection upgrades and individual messages.")
     ),
