@@ -85,7 +85,7 @@ impl AppState {
 
         let subscription_service = Self::create_subscription_service(&config, &redis_pool);
         let auth_service = Self::create_auth_service(&config, &db_pool)?;
-        let admin_service = Self::create_admin_service(&db_pool)?;
+        let admin_service = Self::create_admin_service(&db_pool);
 
         let websocket_rate_limiter = if config.rate_limit.enabled {
             Some(create_websocket_rate_limiter(&config.rate_limit))
@@ -251,10 +251,10 @@ impl AppState {
         )))
     }
 
-    fn create_admin_service(db_pool: &PgPool) -> Result<Arc<dyn AdminUseCase>, AppError> {
+    fn create_admin_service(db_pool: &PgPool) -> Arc<dyn AdminUseCase> {
         let user_store_port: Arc<dyn UserStorePort> =
             Arc::new(PostgresUserStoreAdapter::new(db_pool.clone()));
-        Ok(Arc::new(AdminService::new(user_store_port)))
+        Arc::new(AdminService::new(user_store_port))
     }
 
     pub fn db_pool(&self) -> &PgPool {

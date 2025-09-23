@@ -1,4 +1,5 @@
 use uuid::Uuid;
+use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct UserId(pub Uuid);
@@ -57,11 +58,15 @@ impl RoleType {
             RoleType::Admin => "admin",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for RoleType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "admin" => Some(RoleType::Admin),
-            _ => None,
+            "admin" => Ok(RoleType::Admin),
+            _ => Err(()),
         }
     }
 }
@@ -77,7 +82,7 @@ pub struct Role {
 
 impl Role {
     pub fn role_type(&self) -> Option<RoleType> {
-        RoleType::from_str(&self.name)
+        self.name.parse().ok()
     }
 }
 
@@ -106,7 +111,9 @@ impl UserPublic {
     }
 
     pub fn has_role_type(&self, role_type: RoleType) -> bool {
-        self.roles.iter().any(|role| role.role_type() == Some(role_type))
+        self.roles
+            .iter()
+            .any(|role| role.role_type() == Some(role_type))
     }
 
     pub fn is_admin(&self) -> bool {
