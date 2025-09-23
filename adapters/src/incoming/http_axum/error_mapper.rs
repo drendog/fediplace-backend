@@ -79,6 +79,8 @@ impl IntoResponse for HttpError {
 
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()),
 
+            AppError::Forbidden => (StatusCode::FORBIDDEN, "Forbidden".to_string()),
+
             AppError::EmailNotVerified => (
                 StatusCode::FORBIDDEN,
                 "Email verification is required".to_string(),

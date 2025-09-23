@@ -59,6 +59,9 @@ pub enum AppError {
     #[error("Unauthorized")]
     Unauthorized,
 
+    #[error("Forbidden")]
+    Forbidden,
+
     #[error("Email verification is required")]
     EmailNotVerified,
 

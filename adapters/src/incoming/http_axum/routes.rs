@@ -33,6 +33,7 @@ use crate::{
             rate_limit::{
                 create_auth_rate_limiter, create_paint_rate_limiter, create_tile_rate_limiter,
             },
+            admin_auth::require_admin_role,
             verification::require_email_verification,
         },
         router_ext::RouterExt,
@@ -53,14 +54,14 @@ pub async fn build_application_router(
 ) -> Result<Router<AppState>, AppError> {
     let core_routes = build_core_routes();
     let (auth_routes, auth_layer) = build_auth_routes(state, user_store, password_hasher).await?;
-    let tile_routes = build_tile_routes_with_auth(state, auth_layer);
+    let tile_routes = build_tile_routes_with_auth(state, auth_layer.clone());
+    let admin_routes = build_admin_routes_with_auth(auth_layer);
 
-    Ok(core_routes.merge(tile_routes).merge(auth_routes))
+    Ok(core_routes.merge(tile_routes).merge(auth_routes).merge(admin_routes))
 }
 
 fn build_core_routes() -> Router<AppState> {
     let router = Router::new()
-        .route("/health", get(health_check))
         .route("/palette", get(get_palette))
         .route("/pixel/{x}/{y}", get(get_pixel_info))
         .route("/live", get(websocket_handler));
@@ -103,6 +104,15 @@ fn build_tile_routes_with_auth(
     };
 
     tile_routes_final.merge(paint_routes_final)
+}
+
+fn build_admin_routes_with_auth(
+    auth_layer: AuthManagerLayer<AuthBackend, RedisStore<Client>>,
+) -> Router<AppState> {
+    Router::new()
+        .route("/health", get(health_check))
+        .layer(middleware::from_fn(require_admin_role))
+        .with_auth(auth_layer)
 }
 
 async fn build_auth_routes(

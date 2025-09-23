@@ -5,7 +5,7 @@ use tokio::time::timeout;
 use tracing::{debug, instrument};
 use uuid::Uuid;
 
-use domain::auth::{UserId, UserPublic};
+use domain::auth::{Role, RoleId, UserId, UserPublic};
 use fedi_wplace_application::{
     error::{AppError, AppResult},
     ports::outgoing::user_store::UserStorePort,
@@ -18,6 +18,39 @@ pub struct PostgresUserStoreAdapter {
 impl PostgresUserStoreAdapter {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
+    }
+
+    async fn load_user_roles(&self, user_id: Uuid) -> AppResult<Vec<Role>> {
+        let roles = self
+            .execute_with_timeout(
+                || {
+                    sqlx::query!(
+                        r#"
+                        SELECT r.id, r.name, r.description, r.created_at, r.updated_at
+                        FROM roles r
+                        JOIN user_roles ur ON r.id = ur.role_id
+                        WHERE ur.user_id = $1
+                        "#,
+                        user_id
+                    )
+                    .fetch_all(&self.pool)
+                },
+                &format!("Failed to load roles for user {}", user_id),
+            )
+            .await?;
+
+        let roles = roles
+            .into_iter()
+            .map(|row| Role {
+                id: RoleId::from_uuid(row.id),
+                name: row.name,
+                description: row.description,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            })
+            .collect();
+
+        Ok(roles)
     }
 
     async fn execute_with_timeout<T, F, Fut>(
@@ -74,6 +107,8 @@ impl UserStorePort for PostgresUserStoreAdapter {
             email, user_id
         );
 
+        let roles = self.load_user_roles(user_id).await?;
+
         Ok(UserPublic {
             id: UserId::from_uuid(user_id),
             email: email.to_string(),
@@ -81,6 +116,7 @@ impl UserStorePort for PostgresUserStoreAdapter {
             email_verified_at: None,
             available_charges: 30,
             charges_updated_at: time::OffsetDateTime::now_utc(),
+            roles,
         })
     }
 
@@ -142,6 +178,7 @@ impl UserStorePort for PostgresUserStoreAdapter {
 
         if let Some(record) = row {
             debug!("Found user by username {} with id {}", username, record.id);
+            let roles = self.load_user_roles(record.id).await?;
             Ok(Some(UserPublic {
                 id: UserId::from_uuid(record.id),
                 email: record.email,
@@ -149,6 +186,7 @@ impl UserStorePort for PostgresUserStoreAdapter {
                 email_verified_at: record.email_verified_at,
                 available_charges: record.available_charges,
                 charges_updated_at: record.charges_updated_at,
+                roles,
             }))
         } else {
             debug!("User with username {} not found", username);
@@ -177,6 +215,7 @@ impl UserStorePort for PostgresUserStoreAdapter {
 
         if let Some(record) = row {
             debug!("Found user by id {}", id);
+            let roles = self.load_user_roles(record.id).await?;
             Ok(Some(UserPublic {
                 id: UserId::from_uuid(record.id),
                 email: record.email,
@@ -184,6 +223,7 @@ impl UserStorePort for PostgresUserStoreAdapter {
                 email_verified_at: record.email_verified_at,
                 available_charges: record.available_charges,
                 charges_updated_at: record.charges_updated_at,
+                roles,
             }))
         } else {
             debug!("User with id {} not found", id);
@@ -226,6 +266,7 @@ impl UserStorePort for PostgresUserStoreAdapter {
                 "Found existing social user for provider {} user {} with id {}",
                 provider, provider_user_id, identity_record.user_id
             );
+            let roles = self.load_user_roles(identity_record.user_id).await?;
             return Ok(UserPublic {
                 id: UserId::from_uuid(identity_record.user_id),
                 email: identity_record.email,
@@ -233,6 +274,7 @@ impl UserStorePort for PostgresUserStoreAdapter {
                 email_verified_at: identity_record.email_verified_at,
                 available_charges: identity_record.available_charges,
                 charges_updated_at: identity_record.charges_updated_at,
+                roles,
             });
         }
 

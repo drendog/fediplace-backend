@@ -21,6 +21,8 @@ pub fn build_user_response(
     let current_charges = credit_balance.calculate_current_balance(now, &credit_config);
     let seconds_until_next_charge = credit_balance.seconds_until_next_charge(now, &credit_config);
 
+    let roles = user_public.roles.iter().map(|role| role.name.clone()).collect();
+
     UserResponse {
         id: *user_public.id.as_uuid(),
         email: user_public.email,
@@ -31,5 +33,6 @@ pub fn build_user_response(
         charge_cooldown_seconds: state.config.credits.charge_cooldown_seconds,
         seconds_until_next_charge,
         max_charges: state.config.credits.max_charges,
+        roles,
     }
 }

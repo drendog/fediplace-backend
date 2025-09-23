@@ -49,7 +49,8 @@ use crate::{
                  "charges_updated_at": "2023-01-01T12:00:00Z",
                  "charge_cooldown_seconds": 60,
                  "seconds_until_next_charge": 30,
-                 "max_charges": 30
+                 "max_charges": 30,
+                 "roles": []
              }
          })
         ),
@@ -117,7 +118,8 @@ pub async fn register_handler(
                  "charges_updated_at": "2023-01-01T12:00:00Z",
                  "charge_cooldown_seconds": 60,
                  "seconds_until_next_charge": 30,
-                 "max_charges": 30
+                 "max_charges": 30,
+                 "roles": []
              }
          })
         ),
@@ -211,7 +213,8 @@ pub async fn logout_handler(
                  "charges_updated_at": "2023-01-01T12:00:00Z",
                  "charge_cooldown_seconds": 60,
                  "seconds_until_next_charge": 30,
-                 "max_charges": 30
+                 "max_charges": 30,
+                 "roles": ["admin"]
              }
          })
         ),
@@ -308,7 +311,8 @@ pub async fn verify_email_handler(
                  "charges_updated_at": "2023-01-01T12:00:00Z",
                  "charge_cooldown_seconds": 60,
                  "seconds_until_next_charge": 30,
-                 "max_charges": 30
+                 "max_charges": 30,
+                 "roles": []
              }
          })
         ),

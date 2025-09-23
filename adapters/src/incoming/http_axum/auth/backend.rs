@@ -1,5 +1,5 @@
 use axum_login::{AuthUser, AuthnBackend, UserId as AxumUserId};
-use domain::auth::{UserId, UserPublic};
+use domain::auth::{Role, RoleType, UserId, UserPublic};
 use fedi_wplace_application::ports::outgoing::{
     password_hasher::DynPasswordHasherPort, user_store::DynUserStorePort,
 };
@@ -14,6 +14,7 @@ pub struct User {
     pub email: String,
     pub username: String,
     pub email_verified_at: Option<time::OffsetDateTime>,
+    pub roles: Vec<Role>,
 }
 
 impl From<UserPublic> for User {
@@ -23,6 +24,7 @@ impl From<UserPublic> for User {
             email: user_public.email,
             username: user_public.username,
             email_verified_at: user_public.email_verified_at,
+            roles: user_public.roles,
         }
     }
 }
@@ -36,7 +38,22 @@ impl From<User> for UserPublic {
             email_verified_at: user.email_verified_at,
             available_charges: 0,
             charges_updated_at: time::OffsetDateTime::now_utc(),
+            roles: user.roles,
         }
+    }
+}
+
+impl User {
+    pub fn has_role(&self, role_name: &str) -> bool {
+        self.roles.iter().any(|role| role.name == role_name)
+    }
+
+    pub fn has_role_type(&self, role_type: RoleType) -> bool {
+        self.roles.iter().any(|role| role.role_type() == Some(role_type))
+    }
+
+    pub fn is_admin(&self) -> bool {
+        self.has_role_type(RoleType::Admin)
     }
 }
 
@@ -88,7 +105,8 @@ impl AuthnBackend for AuthBackend {
             .await
             .map_err(|_| AppError::InternalServerError)?;
 
-        let Some((user_id, email, username, password_hash, email_verified_at)) = user_data else {
+        let Some((user_id, _email, _username, password_hash, _email_verified_at)) = user_data
+        else {
             return Ok(None);
         };
 
@@ -102,12 +120,17 @@ impl AuthnBackend for AuthBackend {
             .map_err(|_| AppError::InternalServerError)?;
 
         if password_valid {
-            Ok(Some(User {
-                id: user_id,
-                email,
-                username,
-                email_verified_at,
-            }))
+            let user_public = self
+                .user_store
+                .find_user_by_id(user_id)
+                .await
+                .map_err(|_| AppError::InternalServerError)?;
+
+            if let Some(user_public) = user_public {
+                Ok(Some(User::from(user_public)))
+            } else {
+                Ok(None)
+            }
         } else {
             Ok(None)
         }

@@ -150,6 +150,28 @@ pub struct ApiResponseUser {
 
 #[cfg_attr(feature = "docs", derive(ToSchema))]
 #[cfg_attr(feature = "docs", schema(
+    description = "Role information",
+    example = json!({
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "name": "admin",
+        "description": "Full access to all features and endpoints"
+    })
+))]
+#[derive(Debug, Clone, Serialize)]
+pub struct RoleResponse {
+    #[cfg_attr(
+        feature = "docs",
+        schema(example = "550e8400-e29b-41d4-a716-446655440000")
+    )]
+    pub id: Uuid,
+    #[cfg_attr(feature = "docs", schema(example = "admin"))]
+    pub name: String,
+    #[cfg_attr(feature = "docs", schema(example = "Full access to all features and endpoints"))]
+    pub description: Option<String>,
+}
+
+#[cfg_attr(feature = "docs", derive(ToSchema))]
+#[cfg_attr(feature = "docs", schema(
     description = "User data returned in authentication responses",
     example = json!({
         "id": "550e8400-e29b-41d4-a716-446655440000",
@@ -160,7 +182,8 @@ pub struct ApiResponseUser {
         "charges_updated_at": "2023-01-01T12:00:00Z",
         "charge_cooldown_seconds": 60,
         "seconds_until_next_charge": 30,
-        "max_charges": 30
+        "max_charges": 30,
+        "roles": ["admin"]
     })
 ))]
 #[derive(Debug, Clone, Serialize)]
@@ -186,6 +209,8 @@ pub struct UserResponse {
     pub seconds_until_next_charge: i64,
     #[cfg_attr(feature = "docs", schema(example = 30))]
     pub max_charges: i32,
+    #[cfg_attr(feature = "docs", schema(example = json!(["admin"])))]
+    pub roles: Vec<String>,
 }
 
 #[cfg_attr(feature = "docs", derive(ToSchema))]
