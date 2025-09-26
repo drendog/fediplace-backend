@@ -25,7 +25,6 @@ pub struct Config {
 pub struct AuthConfig {
     pub cookie_name: String,
     pub cookie_secure: bool,
-    pub session_secret: String,
     pub public_base_url: String,
     pub frontend_success_url: String,
     pub frontend_error_url: String,
@@ -364,8 +363,6 @@ impl Default for AuthConfig {
         Self {
             cookie_name: "sid".to_string(),
             cookie_secure: false,
-            session_secret: "development_session_secret_change_in_production_at_least_32_bytes"
-                .to_string(),
             public_base_url: "http://localhost:3000".to_string(),
             frontend_success_url: "http://localhost:3000/".to_string(),
             frontend_error_url: "http://localhost:3000/login?error=auth_failed".to_string(),

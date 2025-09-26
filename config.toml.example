@@ -229,7 +229,6 @@ special_colors = ["transparency"]
 [auth]
 cookie_name = "sid"
 cookie_secure = false  # Set to true in production with HTTPS
-session_secret = "CHANGE_THIS_TO_A_SECURE_RANDOM_STRING_AT_LEAST_64_BYTES_LONG_FOR_PRODUCTION"
 public_base_url = "http://localhost:4321"
 # Frontend URLs for OAuth redirects
 frontend_success_url = "http://localhost:4321/"

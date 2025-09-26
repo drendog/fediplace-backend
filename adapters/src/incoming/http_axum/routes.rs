@@ -4,7 +4,6 @@ use axum::{
 };
 use axum_login::{AuthManagerLayer, AuthManagerLayerBuilder};
 use fedi_wplace_application::error::AppError;
-use secrecy::SecretString;
 use tower_sessions_redis_store::{RedisStore, fred::prelude::Client};
 #[cfg(feature = "docs")]
 use utoipa::OpenApi;
@@ -139,7 +138,6 @@ async fn build_auth_routes(
 
     let session_config = SessionConfig {
         cookie_name: state.config.auth.cookie_name.clone(),
-        session_secret: SecretString::from(state.config.auth.session_secret.clone()),
         secure: state.config.auth.cookie_secure,
         same_site: same_site_policy,
     };

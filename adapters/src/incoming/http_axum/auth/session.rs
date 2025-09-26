@@ -1,4 +1,3 @@
-use secrecy::SecretString;
 use tower_sessions::{SessionManagerLayer, cookie::SameSite};
 use tower_sessions_redis_store::{RedisStore, fred::prelude::*};
 
@@ -7,7 +6,6 @@ use fedi_wplace_application::error::AppError;
 #[derive(Debug, Clone)]
 pub struct SessionConfig {
     pub cookie_name: String,
-    pub session_secret: SecretString,
     pub secure: bool,
     pub same_site: String,
 }
@@ -16,7 +14,6 @@ impl Default for SessionConfig {
     fn default() -> Self {
         Self {
             cookie_name: "fediplace_session".to_string(),
-            session_secret: SecretString::from(""),
             secure: false,
             same_site: "Lax".to_string(),
         }
