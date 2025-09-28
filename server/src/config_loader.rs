@@ -23,7 +23,7 @@ pub fn load_config() -> AppResult<Config> {
     }
 
     let config: Config = figment
-        .merge(Env::prefixed("FEDIPLACE_"))
+        .merge(Env::prefixed("FEDIPLACE_").split("__"))
         .extract()
         .map_err(|e| AppError::ConfigError {
             message: format!("Failed to load configuration: {e}"),
