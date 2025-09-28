@@ -1,5 +1,5 @@
-use uuid::Uuid;
 use std::str::FromStr;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct UserId(pub Uuid);

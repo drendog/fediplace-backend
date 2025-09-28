@@ -14,13 +14,14 @@ use dto::common_responses::{
     NotModifiedResponse, RateLimitExceededResponse, UnauthorizedResponse, ValidationErrorResponse,
 };
 use dto::requests::{
-    BatchPaintPixelsRequest, BatchPixelPaint, BanUserRequest, LoginRequest, PaintRequest, RegisterRequest,
-    UpdateUsernameRequest,
+    BanUserRequest, BatchPaintPixelsRequest, BatchPixelPaint, LoginRequest, PaintRequest,
+    RegisterRequest, UpdateUsernameRequest,
 };
 #[cfg(feature = "docs")]
 use dto::responses::{ApiResponseUser, ApiResponseValue};
 use dto::responses::{
-    BanResponse, PaintOkEnvelope, PaintPixelResponse, PixelHistoryEntry, PixelInfoResponse, TileImageResponse, UserResponse,
+    BanResponse, PaintOkEnvelope, PaintPixelResponse, PixelHistoryEntry, PixelInfoResponse,
+    TileImageResponse, UserResponse,
 };
 use handlers::palette::{PaletteEntry, PaletteResponse, SpecialColorEntry};
 use utoipa::OpenApi;

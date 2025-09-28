@@ -22,9 +22,16 @@ pub async fn build_user_response(
     let current_charges = credit_balance.calculate_current_balance(now, &credit_config);
     let seconds_until_next_charge = credit_balance.seconds_until_next_charge(now, &credit_config);
 
-    let roles = user_public.roles.iter().map(|role| role.name.clone()).collect();
+    let roles = user_public
+        .roles
+        .iter()
+        .map(|role| role.name.clone())
+        .collect();
 
-    let ban_status = state.ban_use_case.check_user_ban_status(&user_public.id).await?;
+    let ban_status = state
+        .ban_use_case
+        .check_user_ban_status(&user_public.id)
+        .await?;
     let (banned, ban_reason) = match ban_status {
         Some(ban) => (true, Some(ban.reason)),
         None => (false, None),

@@ -42,7 +42,8 @@ use crate::{
     incoming::ws_axum::endpoint::websocket_handler,
 };
 use fedi_wplace_application::ports::outgoing::{
-    ban_store::DynBanStorePort, password_hasher::DynPasswordHasherPort, user_store::DynUserStorePort,
+    ban_store::DynBanStorePort, password_hasher::DynPasswordHasherPort,
+    user_store::DynUserStorePort,
 };
 
 #[cfg(feature = "docs")]
@@ -55,7 +56,8 @@ pub async fn build_application_router(
     ban_store: DynBanStorePort,
 ) -> Result<Router<AppState>, AppError> {
     let core_routes = build_core_routes();
-    let (auth_routes, auth_layer) = build_auth_routes(state, user_store, password_hasher, ban_store).await?;
+    let (auth_routes, auth_layer) =
+        build_auth_routes(state, user_store, password_hasher, ban_store).await?;
     let tile_routes = build_tile_routes_with_auth(state, auth_layer.clone());
     let admin_routes = build_admin_routes_with_auth(auth_layer);
 

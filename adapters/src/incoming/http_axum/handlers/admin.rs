@@ -35,9 +35,7 @@ pub async fn assign_role_to_user(
     State(state): State<AppState>,
     Path((user_id, role_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<UserResponse>, HttpError> {
-    let current_user = auth_session
-        .user
-        .ok_or(HttpError(AppError::Unauthorized))?;
+    let current_user = auth_session.user.ok_or(HttpError(AppError::Unauthorized))?;
 
     if !current_user.is_admin() {
         return Err(HttpError(AppError::Forbidden));

@@ -9,7 +9,10 @@ use uuid::Uuid;
 
 use crate::incoming::http_axum::{
     auth::backend::AuthBackend,
-    dto::{requests::BanUserRequest, responses::{ApiResponse, BanResponse}},
+    dto::{
+        requests::BanUserRequest,
+        responses::{ApiResponse, BanResponse},
+    },
     error_mapper::HttpError,
 };
 use crate::shared::app_state::AppState;
@@ -17,15 +20,14 @@ use domain::{auth::UserId, ban::Ban};
 use fedi_wplace_application::error::AppError;
 
 fn format_datetime(dt: time::OffsetDateTime) -> String {
-    dt.format(&Rfc3339)
-        .unwrap_or_else(|_| dt.to_string())
+    dt.format(&Rfc3339).unwrap_or_else(|_| dt.to_string())
 }
 
 fn parse_datetime_string(datetime_str: &str) -> Result<time::OffsetDateTime, AppError> {
-    time::OffsetDateTime::parse(datetime_str, &Rfc3339)
-        .map_err(|_| AppError::ValidationError {
-            message: "Invalid datetime format. Expected RFC3339 format (e.g., 2024-12-31T23:59:59Z)".to_string(),
-        })
+    time::OffsetDateTime::parse(datetime_str, &Rfc3339).map_err(|_| AppError::ValidationError {
+        message: "Invalid datetime format. Expected RFC3339 format (e.g., 2024-12-31T23:59:59Z)"
+            .to_string(),
+    })
 }
 
 impl From<Ban> for BanResponse {
@@ -66,9 +68,7 @@ pub async fn ban_user(
     Path(user_id): Path<Uuid>,
     Json(request): Json<BanUserRequest>,
 ) -> Result<Json<ApiResponse<BanResponse>>, HttpError> {
-    let current_user = auth_session
-        .user
-        .ok_or(HttpError(AppError::Unauthorized))?;
+    let current_user = auth_session.user.ok_or(HttpError(AppError::Unauthorized))?;
 
     if !current_user.is_admin() {
         return Err(HttpError(AppError::Forbidden));
@@ -124,9 +124,7 @@ pub async fn unban_user(
     State(state): State<AppState>,
     Path(user_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<()>>, HttpError> {
-    let current_user = auth_session
-        .user
-        .ok_or(HttpError(AppError::Unauthorized))?;
+    let current_user = auth_session.user.ok_or(HttpError(AppError::Unauthorized))?;
 
     if !current_user.is_admin() {
         return Err(HttpError(AppError::Forbidden));
@@ -163,9 +161,7 @@ pub async fn list_active_bans(
     auth_session: AuthSession<AuthBackend>,
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<BanResponse>>>, HttpError> {
-    let current_user = auth_session
-        .user
-        .ok_or(HttpError(AppError::Unauthorized))?;
+    let current_user = auth_session.user.ok_or(HttpError(AppError::Unauthorized))?;
 
     if !current_user.is_admin() {
         return Err(HttpError(AppError::Forbidden));
@@ -203,9 +199,7 @@ pub async fn get_user_ban_status(
     State(state): State<AppState>,
     Path(user_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<BanResponse>>, HttpError> {
-    let current_user = auth_session
-        .user
-        .ok_or(HttpError(AppError::Unauthorized))?;
+    let current_user = auth_session.user.ok_or(HttpError(AppError::Unauthorized))?;
 
     if !current_user.is_admin() {
         return Err(HttpError(AppError::Forbidden));
