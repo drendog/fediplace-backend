@@ -1,7 +1,8 @@
 use axum_login::{AuthUser, AuthnBackend, UserId as AxumUserId};
 use domain::auth::{Role, RoleType, UserId, UserPublic};
 use fedi_wplace_application::ports::outgoing::{
-    password_hasher::DynPasswordHasherPort, user_store::DynUserStorePort,
+    ban_store::DynBanStorePort, password_hasher::DynPasswordHasherPort,
+    user_store::DynUserStorePort,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -49,7 +50,9 @@ impl User {
     }
 
     pub fn has_role_type(&self, role_type: RoleType) -> bool {
-        self.roles.iter().any(|role| role.role_type() == Some(role_type))
+        self.roles
+            .iter()
+            .any(|role| role.role_type() == Some(role_type))
     }
 
     pub fn is_admin(&self) -> bool {
@@ -73,13 +76,29 @@ impl AuthUser for User {
 pub struct AuthBackend {
     user_store: DynUserStorePort,
     password_hasher: DynPasswordHasherPort,
+    ban_store: DynBanStorePort,
 }
 
 impl AuthBackend {
-    pub fn new(user_store: DynUserStorePort, password_hasher: DynPasswordHasherPort) -> Self {
+    pub fn new(
+        user_store: DynUserStorePort,
+        password_hasher: DynPasswordHasherPort,
+        ban_store: DynBanStorePort,
+    ) -> Self {
         Self {
             user_store,
             password_hasher,
+            ban_store,
+        }
+    }
+
+    async fn check_user_ban_status(&self, user_id: Uuid) -> Result<Option<String>, AppError> {
+        let user_id = UserId::from_uuid(user_id);
+        let ban = self.ban_store.get_active_ban_by_user_id(&user_id).await?;
+
+        match ban {
+            Some(ban) if ban.is_active() => Ok(Some(ban.reason)),
+            _ => Ok(None),
         }
     }
 }
@@ -120,6 +139,15 @@ impl AuthnBackend for AuthBackend {
             .map_err(|_| AppError::InternalServerError)?;
 
         if password_valid {
+            if let Some(ban_reason) = self.check_user_ban_status(user_id).await? {
+                tracing::warn!(
+                    "Banned user attempted to login: {} - Reason: {}",
+                    user_id,
+                    ban_reason
+                );
+                return Err(AppError::Unauthorized);
+            }
+
             let user_public = self
                 .user_store
                 .find_user_by_id(user_id)
@@ -140,6 +168,15 @@ impl AuthnBackend for AuthBackend {
         &self,
         user_id: &AxumUserId<Self>,
     ) -> Result<Option<Self::User>, Self::Error> {
+        if let Some(ban_reason) = self.check_user_ban_status(*user_id).await? {
+            tracing::warn!(
+                "Banned user session detected: {} - Reason: {}",
+                user_id,
+                ban_reason
+            );
+            return Err(AppError::Unauthorized);
+        }
+
         let user = self
             .user_store
             .find_user_by_id(*user_id)

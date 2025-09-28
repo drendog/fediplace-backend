@@ -13,6 +13,7 @@ use domain::events::TileVersionEvent;
 use fedi_wplace_application::ports::incoming::{
     admin::AdminUseCase,
     auth::AuthUseCase,
+    ban::BanUseCase,
     subscriptions::SubscriptionUseCase,
     tiles::{
         MetricsQueryUseCase, PaintPixelsUseCase, PixelHistoryQueryUseCase, PixelInfoQueryUseCase,
@@ -32,6 +33,7 @@ pub struct AppState {
     pub subscription_service: Arc<dyn SubscriptionUseCase + Send + Sync>,
     pub auth_use_case: Arc<dyn AuthUseCase + Send + Sync>,
     pub admin_use_case: Arc<dyn AdminUseCase + Send + Sync>,
+    pub ban_use_case: Arc<dyn BanUseCase + Send + Sync>,
     pub ws_broadcast: broadcast::Sender<TileVersionEvent>,
     pub websocket_rate_limiter: Option<Arc<RateLimiter>>,
     pub active_websocket_connections: Arc<AtomicUsize>,
@@ -50,6 +52,7 @@ impl AppState {
         subscription_service: Arc<dyn SubscriptionUseCase + Send + Sync>,
         auth_use_case: Arc<dyn AuthUseCase + Send + Sync>,
         admin_use_case: Arc<dyn AdminUseCase + Send + Sync>,
+        ban_use_case: Arc<dyn BanUseCase + Send + Sync>,
         ws_broadcast: broadcast::Sender<TileVersionEvent>,
         websocket_rate_limiter: Option<Arc<RateLimiter>>,
         active_websocket_connections: Arc<AtomicUsize>,
@@ -65,6 +68,7 @@ impl AppState {
             subscription_service,
             auth_use_case,
             admin_use_case,
+            ban_use_case,
             ws_broadcast,
             websocket_rate_limiter,
             active_websocket_connections,

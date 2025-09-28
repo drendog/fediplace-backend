@@ -2,14 +2,15 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use domain::auth::UserPublic;
 use domain::credits::{CreditBalance, CreditConfig};
+use fedi_wplace_application::error::AppError;
 
 use crate::{incoming::http_axum::dto::responses::UserResponse, shared::app_state::AppState};
 
-pub fn build_user_response(
+pub async fn build_user_response(
     user_public: UserPublic,
     state: &AppState,
     now: OffsetDateTime,
-) -> UserResponse {
+) -> Result<UserResponse, AppError> {
     let credit_config = CreditConfig::new(
         state.config.credits.max_charges,
         state.config.credits.charge_cooldown_seconds,
@@ -23,7 +24,13 @@ pub fn build_user_response(
 
     let roles = user_public.roles.iter().map(|role| role.name.clone()).collect();
 
-    UserResponse {
+    let ban_status = state.ban_use_case.check_user_ban_status(&user_public.id).await?;
+    let (banned, ban_reason) = match ban_status {
+        Some(ban) => (true, Some(ban.reason)),
+        None => (false, None),
+    };
+
+    Ok(UserResponse {
         id: *user_public.id.as_uuid(),
         email: user_public.email,
         username: user_public.username,
@@ -34,5 +41,7 @@ pub fn build_user_response(
         seconds_until_next_charge,
         max_charges: state.config.credits.max_charges,
         roles,
-    }
+        banned,
+        ban_reason,
+    })
 }

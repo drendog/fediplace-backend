@@ -166,7 +166,10 @@ pub struct RoleResponse {
     pub id: Uuid,
     #[cfg_attr(feature = "docs", schema(example = "admin"))]
     pub name: String,
-    #[cfg_attr(feature = "docs", schema(example = "Full access to all features and endpoints"))]
+    #[cfg_attr(
+        feature = "docs",
+        schema(example = "Full access to all features and endpoints")
+    )]
     pub description: Option<String>,
 }
 
@@ -183,7 +186,9 @@ pub struct RoleResponse {
         "charge_cooldown_seconds": 60,
         "seconds_until_next_charge": 30,
         "max_charges": 30,
-        "roles": ["admin"]
+        "roles": ["admin"],
+        "banned": false,
+        "ban_reason": null
     })
 ))]
 #[derive(Debug, Clone, Serialize)]
@@ -211,6 +216,10 @@ pub struct UserResponse {
     pub max_charges: i32,
     #[cfg_attr(feature = "docs", schema(example = json!(["admin"])))]
     pub roles: Vec<String>,
+    #[cfg_attr(feature = "docs", schema(example = false))]
+    pub banned: bool,
+    #[cfg_attr(feature = "docs", schema(example = "null"))]
+    pub ban_reason: Option<String>,
 }
 
 #[cfg_attr(feature = "docs", derive(ToSchema))]
@@ -267,4 +276,44 @@ pub struct PixelInfoResponse {
     pub color_id: u8,
     #[cfg_attr(feature = "docs", schema(example = "2023-01-01T12:00:00Z"))]
     pub timestamp: String,
+}
+
+#[cfg_attr(feature = "docs", derive(ToSchema))]
+#[cfg_attr(feature = "docs", schema(
+    description = "Information about a banned user",
+    example = json!({
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "user_id": "550e8400-e29b-41d4-a716-446655440001",
+        "banned_by_user_id": "550e8400-e29b-41d4-a716-446655440002",
+        "reason": "Rule violation",
+        "banned_at": "2023-01-01T12:00:00Z",
+        "expires_at": "2024-12-31T23:59:59Z",
+        "created_at": "2023-01-01T12:00:00Z"
+    })
+))]
+#[derive(Debug, Clone, Serialize)]
+pub struct BanResponse {
+    #[cfg_attr(
+        feature = "docs",
+        schema(example = "550e8400-e29b-41d4-a716-446655440000")
+    )]
+    pub id: Uuid,
+    #[cfg_attr(
+        feature = "docs",
+        schema(example = "550e8400-e29b-41d4-a716-446655440001")
+    )]
+    pub user_id: Uuid,
+    #[cfg_attr(
+        feature = "docs",
+        schema(example = "550e8400-e29b-41d4-a716-446655440002")
+    )]
+    pub banned_by_user_id: Option<Uuid>,
+    #[cfg_attr(feature = "docs", schema(example = "Rule violation"))]
+    pub reason: String,
+    #[cfg_attr(feature = "docs", schema(example = "2023-01-01T12:00:00Z"))]
+    pub banned_at: String,
+    #[cfg_attr(feature = "docs", schema(example = "2024-12-31T23:59:59Z"))]
+    pub expires_at: Option<String>,
+    #[cfg_attr(feature = "docs", schema(example = "2023-01-01T12:00:00Z"))]
+    pub created_at: String,
 }

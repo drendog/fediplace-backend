@@ -17,11 +17,11 @@ use fedi_wplace_adapters::incoming::http_axum::{
 };
 
 pub async fn create_router(state: AppState) -> Result<Router, AppError> {
-    let (adapters_state, user_store, password_hasher) = state.to_adapters_state();
+    let (adapters_state, user_store, password_hasher, ban_store) = state.to_adapters_state();
     let cors_layer = create_cors_layer(&adapters_state);
 
     let application_router =
-        build_application_router(&adapters_state, user_store, password_hasher).await?;
+        build_application_router(&adapters_state, user_store, password_hasher, ban_store).await?;
 
     let router_with_rate_limiting = if adapters_state.config.rate_limit.enabled {
         let global_rate_limiter = create_general_rate_limiter(&adapters_state.config.rate_limit);

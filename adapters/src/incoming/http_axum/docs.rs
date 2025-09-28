@@ -14,13 +14,13 @@ use dto::common_responses::{
     NotModifiedResponse, RateLimitExceededResponse, UnauthorizedResponse, ValidationErrorResponse,
 };
 use dto::requests::{
-    BatchPaintPixelsRequest, BatchPixelPaint, LoginRequest, PaintRequest, RegisterRequest,
+    BatchPaintPixelsRequest, BatchPixelPaint, BanUserRequest, LoginRequest, PaintRequest, RegisterRequest,
     UpdateUsernameRequest,
 };
 #[cfg(feature = "docs")]
 use dto::responses::{ApiResponseUser, ApiResponseValue};
 use dto::responses::{
-    PaintOkEnvelope, PaintPixelResponse, PixelHistoryEntry, PixelInfoResponse, TileImageResponse, UserResponse,
+    BanResponse, PaintOkEnvelope, PaintPixelResponse, PixelHistoryEntry, PixelInfoResponse, TileImageResponse, UserResponse,
 };
 use handlers::palette::{PaletteEntry, PaletteResponse, SpecialColorEntry};
 use utoipa::OpenApi;
@@ -40,6 +40,10 @@ use utoipa::OpenApi;
         handlers::auth::me_handler,
         handlers::auth::update_username_handler,
         handlers::admin::assign_role_to_user,
+        handlers::ban::ban_user,
+        handlers::ban::unban_user,
+        handlers::ban::list_active_bans,
+        handlers::ban::get_user_ban_status,
         auth::oauth_google::google_auth_start,
         auth::oauth_google::google_auth_callback,
         endpoint::websocket_handler,
@@ -59,8 +63,10 @@ use utoipa::OpenApi;
             RegisterRequest,
             LoginRequest,
             UpdateUsernameRequest,
+            BanUserRequest,
             AuthRequest,
             UserResponse,
+            BanResponse,
             PixelHistoryEntry,
             PixelInfoResponse,
             RgbColor,

@@ -20,6 +20,7 @@ use fedi_wplace_adapters::{
         image_rs::webp_codec_image::{ImageWebpAdapter, ImageWebpConfig},
         passwords::argon2::Argon2PasswordHasher,
         postgres_sqlx::{
+            ban_store_postgres::PostgresBanStoreAdapter,
             credit_store_postgres::PostgresCreditStoreAdapter,
             pixel_history_store_postgres::PostgresPixelHistoryStoreAdapter,
             user_store_postgres::PostgresUserStoreAdapter,
@@ -37,16 +38,19 @@ use fedi_wplace_application::ports::incoming::tiles::{
     TilesQueryUseCase,
 };
 use fedi_wplace_application::ports::outgoing::{
-    credit_store::CreditStorePort, email_sender::EmailSenderPort, events::EventsPort,
-    image_codec::ImageCodecPort, password_hasher::PasswordHasherPort,
+    ban_store::BanStorePort, credit_store::CreditStorePort, email_sender::EmailSenderPort,
+    events::EventsPort, image_codec::ImageCodecPort, password_hasher::PasswordHasherPort,
     pixel_history_store::PixelHistoryStorePort, subscription_port::SubscriptionPort,
     tile_cache::TileCachePort, user_store::UserStorePort,
 };
 use fedi_wplace_application::{
     admin::service::AdminService,
     auth::service::AuthService,
+    ban::service::BanService,
     config::TileSettings,
-    ports::incoming::{admin::AdminUseCase, auth::AuthUseCase, subscriptions::SubscriptionUseCase},
+    ports::incoming::{
+        admin::AdminUseCase, auth::AuthUseCase, ban::BanUseCase, subscriptions::SubscriptionUseCase,
+    },
     subscriptions::service::SubscriptionService,
     tiles::service::PaletteColorLookup,
     tiles::service::{TileService, TileServiceDeps},
@@ -61,6 +65,7 @@ pub struct AppState {
     pub subscription_service: Arc<dyn SubscriptionUseCase>,
     pub auth_service: Arc<dyn AuthUseCase>,
     pub admin_service: Arc<dyn AdminUseCase>,
+    pub ban_service: Arc<dyn BanUseCase>,
     pub ws_broadcast: broadcast::Sender<TileVersionEvent>,
     pub websocket_rate_limiter: Option<Arc<RateLimiter>>,
     pub active_websocket_connections: Arc<AtomicUsize>,
@@ -86,6 +91,7 @@ impl AppState {
         let subscription_service = Self::create_subscription_service(&config, &redis_pool);
         let auth_service = Self::create_auth_service(&config, &db_pool)?;
         let admin_service = Self::create_admin_service(&db_pool);
+        let ban_service = Self::create_ban_service(&db_pool);
 
         let websocket_rate_limiter = if config.rate_limit.enabled {
             Some(create_websocket_rate_limiter(&config.rate_limit))
@@ -101,6 +107,7 @@ impl AppState {
             subscription_service,
             auth_service,
             admin_service,
+            ban_service,
             ws_broadcast,
             websocket_rate_limiter,
             active_websocket_connections: Arc::new(AtomicUsize::new(0)),
@@ -257,6 +264,14 @@ impl AppState {
         Arc::new(AdminService::new(user_store_port))
     }
 
+    fn create_ban_service(db_pool: &PgPool) -> Arc<dyn BanUseCase> {
+        let ban_store_port: Arc<dyn BanStorePort> =
+            Arc::new(PostgresBanStoreAdapter::new(db_pool.clone()));
+        let user_store_port: Arc<dyn UserStorePort> =
+            Arc::new(PostgresUserStoreAdapter::new(db_pool.clone()));
+        Arc::new(BanService::new(ban_store_port, user_store_port))
+    }
+
     pub fn db_pool(&self) -> &PgPool {
         &self.db_pool
     }
@@ -265,12 +280,14 @@ impl AppState {
         &self.redis_pool
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn to_adapters_state(
         self,
     ) -> (
         AdaptersAppState,
         Arc<dyn UserStorePort>,
         Arc<dyn PasswordHasherPort>,
+        Arc<dyn BanStorePort>,
     ) {
         let ws_policy = WsAdapterPolicy {
             heartbeat_refresh_secs: self.config.ws_policy.heartbeat_refresh_secs,
@@ -283,6 +300,8 @@ impl AppState {
         let password_hasher_port: Arc<dyn PasswordHasherPort> = Arc::new(
             Argon2PasswordHasher::from_config_or_default(&self.config.auth.argon2),
         );
+        let ban_store_port: Arc<dyn BanStorePort> =
+            Arc::new(PostgresBanStoreAdapter::new(self.db_pool.clone()));
         let admin_service = Arc::new(AdminService::new(Arc::clone(&user_store_port)));
 
         let adapters_state = AdaptersAppState::new(
@@ -296,11 +315,17 @@ impl AppState {
             self.subscription_service,
             self.auth_service,
             admin_service,
+            self.ban_service,
             self.ws_broadcast,
             self.websocket_rate_limiter,
             self.active_websocket_connections,
         );
 
-        (adapters_state, user_store_port, password_hasher_port)
+        (
+            adapters_state,
+            user_store_port,
+            password_hasher_port,
+            ban_store_port,
+        )
     }
 }

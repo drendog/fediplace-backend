@@ -49,6 +49,6 @@ pub async fn assign_role_to_user(
         .await?;
 
     let now = time::OffsetDateTime::now_utc();
-    let response = build_user_response(updated_user, &state, now);
+    let response = build_user_response(updated_user, &state, now).await?;
     Ok(Json(response))
 }

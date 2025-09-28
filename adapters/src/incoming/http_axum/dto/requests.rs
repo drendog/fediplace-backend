@@ -183,3 +183,20 @@ pub struct UpdateUsernameRequest {
     ))]
     pub username: String,
 }
+
+#[cfg_attr(feature = "docs", derive(ToSchema))]
+#[cfg_attr(feature = "docs", schema(
+    description = "Request to ban a user with reason and optional expiration date",
+    example = json!({
+        "reason": "Rule violation",
+        "expires_at": "2024-12-31T23:59:59Z"
+    })
+))]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct BanUserRequest {
+    #[cfg_attr(feature = "docs", schema(example = "Rule violation"))]
+    pub reason: String,
+
+    #[cfg_attr(feature = "docs", schema(example = "2024-12-31T23:59:59Z"))]
+    pub expires_at: Option<String>,
+}

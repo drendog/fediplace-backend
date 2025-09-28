@@ -1,6 +1,6 @@
 use axum::{
     Router, middleware,
-    routing::{get, post, put},
+    routing::{delete, get, post, put},
 };
 use axum_login::{AuthManagerLayer, AuthManagerLayerBuilder};
 use fedi_wplace_application::error::AppError;
@@ -24,6 +24,7 @@ use crate::{
                 login_handler, logout_handler, me_handler, register_handler,
                 update_username_handler, verify_email_handler,
             },
+            ban::{ban_user, get_user_ban_status, list_active_bans, unban_user},
             health::health_check,
             palette::get_palette,
             pixel_info::get_pixel_info,
@@ -41,7 +42,7 @@ use crate::{
     incoming::ws_axum::endpoint::websocket_handler,
 };
 use fedi_wplace_application::ports::outgoing::{
-    password_hasher::DynPasswordHasherPort, user_store::DynUserStorePort,
+    ban_store::DynBanStorePort, password_hasher::DynPasswordHasherPort, user_store::DynUserStorePort,
 };
 
 #[cfg(feature = "docs")]
@@ -51,9 +52,10 @@ pub async fn build_application_router(
     state: &AppState,
     user_store: DynUserStorePort,
     password_hasher: DynPasswordHasherPort,
+    ban_store: DynBanStorePort,
 ) -> Result<Router<AppState>, AppError> {
     let core_routes = build_core_routes();
-    let (auth_routes, auth_layer) = build_auth_routes(state, user_store, password_hasher).await?;
+    let (auth_routes, auth_layer) = build_auth_routes(state, user_store, password_hasher, ban_store).await?;
     let tile_routes = build_tile_routes_with_auth(state, auth_layer.clone());
     let admin_routes = build_admin_routes_with_auth(auth_layer);
 
@@ -115,6 +117,10 @@ fn build_admin_routes_with_auth(
     Router::new()
         .route("/health", get(health_check))
         .route("/users/{user_id}/roles/{role_id}", put(assign_role_to_user))
+        .route("/users/{user_id}/ban", post(ban_user))
+        .route("/users/{user_id}/ban", delete(unban_user))
+        .route("/users/{user_id}/ban", get(get_user_ban_status))
+        .route("/bans", get(list_active_bans))
         .layer(middleware::from_fn(require_admin_role))
         .with_auth(auth_layer)
 }
@@ -123,6 +129,7 @@ async fn build_auth_routes(
     state: &AppState,
     user_store: DynUserStorePort,
     password_hasher: DynPasswordHasherPort,
+    ban_store: DynBanStorePort,
 ) -> Result<
     (
         Router<AppState>,
@@ -144,7 +151,7 @@ async fn build_auth_routes(
     let session_layer =
         create_session_layer(&state.config.redis.redis_url, &session_config).await?;
 
-    let auth_backend = AuthBackend::new(user_store, password_hasher);
+    let auth_backend = AuthBackend::new(user_store, password_hasher, ban_store);
 
     let rate_limited_routes = Router::new()
         .route("/auth/register", post(register_handler))

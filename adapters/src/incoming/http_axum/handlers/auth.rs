@@ -89,7 +89,7 @@ pub async fn register_handler(
         .map_err(|_| HttpError(AppError::InternalServerError))?;
 
     let now = time::OffsetDateTime::now_utc();
-    let user_response = build_user_response(user_public, &state, now);
+    let user_response = build_user_response(user_public, &state, now).await?;
 
     Ok((
         StatusCode::CREATED,
@@ -165,7 +165,7 @@ pub async fn login_handler(
     let user_public = state.auth_use_case.me(user.id).await?;
 
     let now = time::OffsetDateTime::now_utc();
-    let user_response = build_user_response(user_public, &state, now);
+    let user_response = build_user_response(user_public, &state, now).await?;
 
     Ok(Json(ApiResponse::<UserResponse> {
         ok: true,
@@ -214,7 +214,9 @@ pub async fn logout_handler(
                  "charge_cooldown_seconds": 60,
                  "seconds_until_next_charge": 30,
                  "max_charges": 30,
-                 "roles": ["admin"]
+                 "roles": ["admin"],
+                 "banned": false,
+                 "ban_reason": null
              }
          })
         ),
@@ -237,7 +239,7 @@ pub async fn me_handler(
     let user_public = state.auth_use_case.me(user.id).await?;
 
     let now = time::OffsetDateTime::now_utc();
-    let user_response = build_user_response(user_public, &state, now);
+    let user_response = build_user_response(user_public, &state, now).await?;
 
     Ok(Json(ApiResponse::<UserResponse> {
         ok: true,
@@ -346,7 +348,7 @@ pub async fn update_username_handler(
         .await?;
 
     let now = time::OffsetDateTime::now_utc();
-    let user_response = build_user_response(updated_user, &state, now);
+    let user_response = build_user_response(updated_user, &state, now).await?;
 
     Ok(Json(ApiResponse::<UserResponse> {
         ok: true,
