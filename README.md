@@ -15,7 +15,7 @@ sqlx migrate run
 cargo run
 ```
 
-Server runs on <http://localhost:8000> by default. API docs at `/swagger-ui/` with `cargo run --features docs`.
+Server runs on <http://localhost:8000> by default. API docs at `/docs/` with `cargo run --features docs`.
 Make sure to set up `.env` from `.env.example` with your own secrets, and make sure to set up `config.toml` from `config.toml.example`.
 
 ## Architecture
