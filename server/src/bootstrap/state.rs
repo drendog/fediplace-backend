@@ -90,8 +90,8 @@ impl AppState {
 
         let subscription_service = Self::create_subscription_service(&config, &redis_pool);
         let auth_service = Self::create_auth_service(&config, &db_pool)?;
-        let admin_service = Self::create_admin_service(&db_pool);
-        let ban_service = Self::create_ban_service(&db_pool);
+        let admin_service = Self::create_admin_service(&config, &db_pool);
+        let ban_service = Self::create_ban_service(&config, &db_pool);
 
         let websocket_rate_limiter = if config.rate_limit.enabled {
             Some(create_websocket_rate_limiter(&config.rate_limit))
@@ -166,11 +166,16 @@ impl AppState {
             config.redis_rgba_ttl_with_jitter(),
             config.redis_missing_sentinel_ttl_with_jitter(),
         ));
-        let pixel_history_store: Arc<dyn PixelHistoryStorePort> = Arc::new(
-            PostgresPixelHistoryStoreAdapter::new(db_pool.clone(), config.tiles.tile_size),
-        );
-        let credit_store: Arc<dyn CreditStorePort> =
-            Arc::new(PostgresCreditStoreAdapter::new(db_pool.clone()));
+        let pixel_history_store: Arc<dyn PixelHistoryStorePort> =
+            Arc::new(PostgresPixelHistoryStoreAdapter::new(
+                db_pool.clone(),
+                config.tiles.tile_size,
+                config.db.query_timeout_secs,
+            ));
+        let credit_store: Arc<dyn CreditStorePort> = Arc::new(PostgresCreditStoreAdapter::new(
+            db_pool.clone(),
+            config.db.query_timeout_secs,
+        ));
         let codec_port: Arc<dyn ImageCodecPort> = Arc::new(ImageWebpAdapter::new(webp_config));
         let events_port: Arc<dyn EventsPort> =
             Arc::new(TokioBroadcastEventsAdapter::new(ws_broadcast.clone()));
@@ -224,8 +229,10 @@ impl AppState {
         config: &Config,
         db_pool: &PgPool,
     ) -> Result<Arc<dyn AuthUseCase>, AppError> {
-        let user_store_port: Arc<dyn UserStorePort> =
-            Arc::new(PostgresUserStoreAdapter::new(db_pool.clone()));
+        let user_store_port: Arc<dyn UserStorePort> = Arc::new(PostgresUserStoreAdapter::new(
+            db_pool.clone(),
+            config.db.query_timeout_secs,
+        ));
         let password_hasher_port: Arc<dyn PasswordHasherPort> = Arc::new(
             Argon2PasswordHasher::from_config_or_default(&config.auth.argon2),
         );
@@ -258,17 +265,23 @@ impl AppState {
         )))
     }
 
-    fn create_admin_service(db_pool: &PgPool) -> Arc<dyn AdminUseCase> {
-        let user_store_port: Arc<dyn UserStorePort> =
-            Arc::new(PostgresUserStoreAdapter::new(db_pool.clone()));
+    fn create_admin_service(config: &Config, db_pool: &PgPool) -> Arc<dyn AdminUseCase> {
+        let user_store_port: Arc<dyn UserStorePort> = Arc::new(PostgresUserStoreAdapter::new(
+            db_pool.clone(),
+            config.db.query_timeout_secs,
+        ));
         Arc::new(AdminService::new(user_store_port))
     }
 
-    fn create_ban_service(db_pool: &PgPool) -> Arc<dyn BanUseCase> {
-        let ban_store_port: Arc<dyn BanStorePort> =
-            Arc::new(PostgresBanStoreAdapter::new(db_pool.clone()));
-        let user_store_port: Arc<dyn UserStorePort> =
-            Arc::new(PostgresUserStoreAdapter::new(db_pool.clone()));
+    fn create_ban_service(config: &Config, db_pool: &PgPool) -> Arc<dyn BanUseCase> {
+        let ban_store_port: Arc<dyn BanStorePort> = Arc::new(PostgresBanStoreAdapter::new(
+            db_pool.clone(),
+            config.db.query_timeout_secs,
+        ));
+        let user_store_port: Arc<dyn UserStorePort> = Arc::new(PostgresUserStoreAdapter::new(
+            db_pool.clone(),
+            config.db.query_timeout_secs,
+        ));
         Arc::new(BanService::new(ban_store_port, user_store_port))
     }
 
@@ -295,13 +308,17 @@ impl AppState {
             subscription_ttl_secs: self.config.ws_policy.subscription_ttl_secs,
         };
 
-        let user_store_port: Arc<dyn UserStorePort> =
-            Arc::new(PostgresUserStoreAdapter::new(self.db_pool.clone()));
+        let user_store_port: Arc<dyn UserStorePort> = Arc::new(PostgresUserStoreAdapter::new(
+            self.db_pool.clone(),
+            self.config.db.query_timeout_secs,
+        ));
         let password_hasher_port: Arc<dyn PasswordHasherPort> = Arc::new(
             Argon2PasswordHasher::from_config_or_default(&self.config.auth.argon2),
         );
-        let ban_store_port: Arc<dyn BanStorePort> =
-            Arc::new(PostgresBanStoreAdapter::new(self.db_pool.clone()));
+        let ban_store_port: Arc<dyn BanStorePort> = Arc::new(PostgresBanStoreAdapter::new(
+            self.db_pool.clone(),
+            self.config.db.query_timeout_secs,
+        ));
         let admin_service = Arc::new(AdminService::new(Arc::clone(&user_store_port)));
 
         let adapters_state = AdaptersAppState::new(

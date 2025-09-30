@@ -3,43 +3,29 @@ use domain::{
     coords::{GlobalCoord, TileCoord},
 };
 use sqlx::{PgPool, types::time::OffsetDateTime};
-use std::{future::Future, time::Duration};
-use tokio::time::timeout;
 use tracing::instrument;
 use uuid::Uuid;
 
 use fedi_wplace_application::{
-    error::{AppError, AppResult},
+    error::AppResult,
     ports::outgoing::pixel_history_store::{PixelHistoryEntry, PixelHistoryStorePort, PixelInfo},
 };
+
+use super::utils::PostgresExecutor;
 
 pub struct PostgresPixelHistoryStoreAdapter {
     pool: PgPool,
     tile_size: usize,
+    executor: PostgresExecutor,
 }
 
 impl PostgresPixelHistoryStoreAdapter {
-    pub fn new(pool: PgPool, tile_size: usize) -> Self {
-        Self { pool, tile_size }
-    }
-
-    async fn execute_with_timeout<T, F, Fut>(
-        &self,
-        operation: F,
-        error_context: &str,
-    ) -> AppResult<T>
-    where
-        F: FnOnce() -> Fut,
-        Fut: Future<Output = Result<T, sqlx::Error>>,
-    {
-        timeout(Duration::from_secs(5), operation())
-            .await
-            .map_err(|_| AppError::DatabaseError {
-                message: "DB timeout".to_string(),
-            })?
-            .map_err(|e| AppError::DatabaseError {
-                message: format!("{}: {}", error_context, e),
-            })
+    pub fn new(pool: PgPool, tile_size: usize, query_timeout_secs: u64) -> Self {
+        Self {
+            pool,
+            tile_size,
+            executor: PostgresExecutor::new(query_timeout_secs),
+        }
     }
 }
 
@@ -65,7 +51,7 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
             timestamps.push(action.timestamp);
         }
 
-        self.execute_with_timeout(
+        self.executor.execute_with_timeout(
             || {
                 sqlx::query!(
                     r#"
@@ -102,23 +88,24 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
         let max_y = min_y + tile_size - 1;
 
         let history = self
+            .executor
             .execute_with_timeout(
                 || {
                     sqlx::query!(
                         r#"
-                        SELECT
-                            ph.user_id,
-                            u.username,
-                            ph.global_x,
-                            ph.global_y,
-                            ph.color_id,
-                            ph.created_at
-                        FROM pixel_history ph
-                        JOIN users u ON ph.user_id = u.id
-                        WHERE ph.global_x >= $1 AND ph.global_x <= $2
-                          AND ph.global_y >= $3 AND ph.global_y <= $4
-                        ORDER BY ph.created_at DESC
-                        "#,
+                    SELECT
+                        ph.user_id,
+                        u.username,
+                        ph.global_x,
+                        ph.global_y,
+                        ph.color_id,
+                        ph.created_at
+                    FROM pixel_history ph
+                    JOIN users u ON ph.user_id = u.id
+                    WHERE ph.global_x >= $1 AND ph.global_x <= $2
+                      AND ph.global_y >= $3 AND ph.global_y <= $4
+                    ORDER BY ph.created_at DESC
+                    "#,
                         min_x,
                         max_x,
                         min_y,
@@ -168,18 +155,19 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
         let max_y = min_y + tile_size - 1;
 
         let pixels = self
+            .executor
             .execute_with_timeout(
                 || {
                     sqlx::query!(
                         r#"
-                        SELECT
-                            global_x,
-                            global_y,
-                            color_id
-                        FROM pixel_history
-                        WHERE global_x >= $1 AND global_x <= $2
-                          AND global_y >= $3 AND global_y <= $4
-                        "#,
+                    SELECT
+                        global_x,
+                        global_y,
+                        color_id
+                    FROM pixel_history
+                    WHERE global_x >= $1 AND global_x <= $2
+                      AND global_y >= $3 AND global_y <= $4
+                    "#,
                         min_x,
                         max_x,
                         min_y,
@@ -217,13 +205,14 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
         let tile_size = tile_size as i32;
 
         let result = self
+            .executor
             .execute_with_timeout(
                 || {
                     sqlx::query!(
                         r#"
-                        SELECT COUNT(DISTINCT (global_x / $1, global_y / $1)) as count
-                        FROM pixel_history
-                        "#,
+                    SELECT COUNT(DISTINCT (global_x / $1, global_y / $1)) as count
+                    FROM pixel_history
+                    "#,
                         tile_size
                     )
                     .fetch_one(&self.pool)
@@ -240,19 +229,20 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
     #[instrument(skip(self))]
     async fn get_pixel_info(&self, coord: GlobalCoord) -> AppResult<Option<PixelInfo>> {
         let pixel_info = self
+            .executor
             .execute_with_timeout(
                 || {
                     sqlx::query!(
                         r#"
-                        SELECT
-                            ph.user_id,
-                            u.username,
-                            ph.color_id,
-                            ph.created_at
-                        FROM pixel_history ph
-                        JOIN users u ON ph.user_id = u.id
-                        WHERE ph.global_x = $1 AND ph.global_y = $2
-                        "#,
+                    SELECT
+                        ph.user_id,
+                        u.username,
+                        ph.color_id,
+                        ph.created_at
+                    FROM pixel_history ph
+                    JOIN users u ON ph.user_id = u.id
+                    WHERE ph.global_x = $1 AND ph.global_y = $2
+                    "#,
                         coord.x,
                         coord.y
                     )

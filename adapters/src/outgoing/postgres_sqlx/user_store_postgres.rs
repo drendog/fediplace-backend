@@ -1,7 +1,5 @@
 use sqlx::PgPool;
-use std::{future::Future, time::Duration};
 use time::OffsetDateTime;
-use tokio::time::timeout;
 use tracing::{debug, instrument};
 use uuid::Uuid;
 
@@ -11,26 +9,33 @@ use fedi_wplace_application::{
     ports::outgoing::user_store::UserStorePort,
 };
 
+use super::utils::{PostgresExecutor, begin_transaction, commit_transaction};
+
 pub struct PostgresUserStoreAdapter {
     pool: PgPool,
+    executor: PostgresExecutor,
 }
 
 impl PostgresUserStoreAdapter {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new(pool: PgPool, query_timeout_secs: u64) -> Self {
+        Self {
+            pool,
+            executor: PostgresExecutor::new(query_timeout_secs),
+        }
     }
 
     async fn load_user_roles(&self, user_id: Uuid) -> AppResult<Vec<Role>> {
         let roles = self
+            .executor
             .execute_with_timeout(
                 || {
                     sqlx::query!(
                         r#"
-                        SELECT r.id, r.name, r.description, r.created_at, r.updated_at
-                        FROM roles r
-                        JOIN user_roles ur ON r.id = ur.role_id
-                        WHERE ur.user_id = $1
-                        "#,
+                    SELECT r.id, r.name, r.description, r.created_at, r.updated_at
+                    FROM roles r
+                    JOIN user_roles ur ON r.id = ur.role_id
+                    WHERE ur.user_id = $1
+                    "#,
                         user_id
                     )
                     .fetch_all(&self.pool)
@@ -39,7 +44,7 @@ impl PostgresUserStoreAdapter {
             )
             .await?;
 
-        let roles = roles
+        Ok(roles
             .into_iter()
             .map(|row| Role {
                 id: RoleId::from_uuid(row.id),
@@ -48,28 +53,28 @@ impl PostgresUserStoreAdapter {
                 created_at: row.created_at,
                 updated_at: row.updated_at,
             })
-            .collect();
-
-        Ok(roles)
+            .collect())
     }
 
-    async fn execute_with_timeout<T, F, Fut>(
+    async fn build_user_public(
         &self,
-        operation: F,
-        error_context: &str,
-    ) -> AppResult<T>
-    where
-        F: FnOnce() -> Fut,
-        Fut: Future<Output = Result<T, sqlx::Error>>,
-    {
-        timeout(Duration::from_secs(2), operation())
-            .await
-            .map_err(|_| AppError::DatabaseError {
-                message: "DB timeout".to_string(),
-            })?
-            .map_err(|e| AppError::DatabaseError {
-                message: format!("{}: {}", error_context, e),
-            })
+        id: Uuid,
+        email: String,
+        username: String,
+        email_verified_at: Option<OffsetDateTime>,
+        available_charges: i32,
+        charges_updated_at: OffsetDateTime,
+    ) -> AppResult<UserPublic> {
+        let roles = self.load_user_roles(id).await?;
+        Ok(UserPublic {
+            id: UserId::from_uuid(id),
+            email,
+            username,
+            email_verified_at,
+            available_charges,
+            charges_updated_at,
+            roles,
+        })
     }
 }
 
@@ -84,40 +89,39 @@ impl UserStorePort for PostgresUserStoreAdapter {
     ) -> AppResult<UserPublic> {
         let user_id = Uuid::new_v4();
 
-        self.execute_with_timeout(
-            || {
-                sqlx::query!(
-                    r#"
+        self.executor
+            .execute_with_timeout(
+                || {
+                    sqlx::query!(
+                        r#"
                     INSERT INTO users (id, email, username, password_hash)
                     VALUES ($1, $2, $3, $4)
                     "#,
-                    user_id,
-                    email,
-                    username,
-                    password_hash
-                )
-                .execute(&self.pool)
-            },
-            &format!("Failed to create user with email {}", email),
-        )
-        .await?;
+                        user_id,
+                        email,
+                        username,
+                        password_hash
+                    )
+                    .execute(&self.pool)
+                },
+                &format!("Failed to create user with email {}", email),
+            )
+            .await?;
 
         debug!(
             "Successfully created user with email {} and id {}",
             email, user_id
         );
 
-        let roles = self.load_user_roles(user_id).await?;
-
-        Ok(UserPublic {
-            id: UserId::from_uuid(user_id),
-            email: email.to_string(),
-            username: username.to_string(),
-            email_verified_at: None,
-            available_charges: 30,
-            charges_updated_at: time::OffsetDateTime::now_utc(),
-            roles,
-        })
+        self.build_user_public(
+            user_id,
+            email.to_string(),
+            username.to_string(),
+            None,
+            30,
+            time::OffsetDateTime::now_utc(),
+        )
+        .await
     }
 
     #[instrument(skip(self))]
@@ -126,14 +130,15 @@ impl UserStorePort for PostgresUserStoreAdapter {
         email: &str,
     ) -> AppResult<Option<(Uuid, String, String, Option<String>, Option<OffsetDateTime>)>> {
         let row = self
+            .executor
             .execute_with_timeout(
                 || {
                     sqlx::query!(
                         r#"
-                        SELECT id, email, username, password_hash, email_verified_at
-                        FROM users
-                        WHERE email = $1
-                        "#,
+                    SELECT id, email, username, password_hash, email_verified_at
+                    FROM users
+                    WHERE email = $1
+                    "#,
                         email
                     )
                     .fetch_optional(&self.pool)
@@ -159,35 +164,36 @@ impl UserStorePort for PostgresUserStoreAdapter {
 
     #[instrument(skip(self))]
     async fn find_user_by_username(&self, username: &str) -> AppResult<Option<UserPublic>> {
-        let row = self
-            .execute_with_timeout(
-                || {
-                    sqlx::query!(
-                        r#"
-                        SELECT id, email, username, email_verified_at, available_charges, charges_updated_at
-                        FROM users
-                        WHERE username = $1
-                        "#,
-                        username
-                    )
-                    .fetch_optional(&self.pool)
-                },
-                &format!("Failed to find user by username {}", username),
-            )
-            .await?;
+        let row = self.executor.execute_with_timeout(
+            || {
+                sqlx::query!(
+                    r#"
+                    SELECT id, email, username, email_verified_at, available_charges, charges_updated_at
+                    FROM users
+                    WHERE username = $1
+                    "#,
+                    username
+                )
+                .fetch_optional(&self.pool)
+            },
+            &format!("Failed to find user by username {}", username),
+
+        )
+        .await?;
 
         if let Some(record) = row {
             debug!("Found user by username {} with id {}", username, record.id);
-            let roles = self.load_user_roles(record.id).await?;
-            Ok(Some(UserPublic {
-                id: UserId::from_uuid(record.id),
-                email: record.email,
-                username: record.username,
-                email_verified_at: record.email_verified_at,
-                available_charges: record.available_charges,
-                charges_updated_at: record.charges_updated_at,
-                roles,
-            }))
+            Ok(Some(
+                self.build_user_public(
+                    record.id,
+                    record.email,
+                    record.username,
+                    record.email_verified_at,
+                    record.available_charges,
+                    record.charges_updated_at,
+                )
+                .await?,
+            ))
         } else {
             debug!("User with username {} not found", username);
             Ok(None)
@@ -196,35 +202,36 @@ impl UserStorePort for PostgresUserStoreAdapter {
 
     #[instrument(skip(self))]
     async fn find_user_by_id(&self, id: Uuid) -> AppResult<Option<UserPublic>> {
-        let row = self
-            .execute_with_timeout(
-                || {
-                    sqlx::query!(
-                        r#"
-                        SELECT id, email, username, email_verified_at, available_charges, charges_updated_at
-                        FROM users
-                        WHERE id = $1
-                        "#,
-                        id
-                    )
-                    .fetch_optional(&self.pool)
-                },
-                &format!("Failed to find user by id {}", id),
-            )
-            .await?;
+        let row = self.executor.execute_with_timeout(
+            || {
+                sqlx::query!(
+                    r#"
+                    SELECT id, email, username, email_verified_at, available_charges, charges_updated_at
+                    FROM users
+                    WHERE id = $1
+                    "#,
+                    id
+                )
+                .fetch_optional(&self.pool)
+            },
+            &format!("Failed to find user by id {}", id),
+
+        )
+        .await?;
 
         if let Some(record) = row {
             debug!("Found user by id {}", id);
-            let roles = self.load_user_roles(record.id).await?;
-            Ok(Some(UserPublic {
-                id: UserId::from_uuid(record.id),
-                email: record.email,
-                username: record.username,
-                email_verified_at: record.email_verified_at,
-                available_charges: record.available_charges,
-                charges_updated_at: record.charges_updated_at,
-                roles,
-            }))
+            Ok(Some(
+                self.build_user_public(
+                    record.id,
+                    record.email,
+                    record.username,
+                    record.email_verified_at,
+                    record.available_charges,
+                    record.charges_updated_at,
+                )
+                .await?,
+            ))
         } else {
             debug!("User with id {} not found", id);
             Ok(None)
@@ -239,43 +246,43 @@ impl UserStorePort for PostgresUserStoreAdapter {
         email: Option<&str>,
         username: Option<&str>,
     ) -> AppResult<UserPublic> {
-        let existing_identity = self
-            .execute_with_timeout(
-                || {
-                    sqlx::query!(
-                        r#"
-                        SELECT ui.user_id, u.email, u.username, u.email_verified_at, u.available_charges, u.charges_updated_at
-                        FROM user_identities ui
-                        JOIN users u ON ui.user_id = u.id
-                        WHERE ui.provider = $1 AND ui.provider_user_id = $2
-                        "#,
-                        provider,
-                        provider_user_id
-                    )
-                    .fetch_optional(&self.pool)
-                },
-                &format!(
-                    "Failed to find identity for provider {} user {}",
-                    provider, provider_user_id
-                ),
-            )
-            .await?;
+        let existing_identity = self.executor.execute_with_timeout(
+            || {
+                sqlx::query!(
+                    r#"
+                    SELECT ui.user_id, u.email, u.username, u.email_verified_at, u.available_charges, u.charges_updated_at
+                    FROM user_identities ui
+                    JOIN users u ON ui.user_id = u.id
+                    WHERE ui.provider = $1 AND ui.provider_user_id = $2
+                    "#,
+                    provider,
+                    provider_user_id
+                )
+                .fetch_optional(&self.pool)
+            },
+            &format!(
+                "Failed to find identity for provider {} user {}",
+                provider, provider_user_id
+            ),
+
+        )
+        .await?;
 
         if let Some(identity_record) = existing_identity {
             debug!(
                 "Found existing social user for provider {} user {} with id {}",
                 provider, provider_user_id, identity_record.user_id
             );
-            let roles = self.load_user_roles(identity_record.user_id).await?;
-            return Ok(UserPublic {
-                id: UserId::from_uuid(identity_record.user_id),
-                email: identity_record.email,
-                username: identity_record.username,
-                email_verified_at: identity_record.email_verified_at,
-                available_charges: identity_record.available_charges,
-                charges_updated_at: identity_record.charges_updated_at,
-                roles,
-            });
+            return self
+                .build_user_public(
+                    identity_record.user_id,
+                    identity_record.email,
+                    identity_record.username,
+                    identity_record.email_verified_at,
+                    identity_record.available_charges,
+                    identity_record.charges_updated_at,
+                )
+                .await;
         }
 
         let user_id = if let Some(email) = email {
@@ -287,22 +294,23 @@ impl UserStorePort for PostgresUserStoreAdapter {
                 let default_username = format!("user_{}", &new_user_id.to_string()[..8]);
                 let username = username.unwrap_or(&default_username);
 
-                self.execute_with_timeout(
-                    || {
-                        sqlx::query!(
-                            r#"
+                self.executor
+                    .execute_with_timeout(
+                        || {
+                            sqlx::query!(
+                                r#"
                             INSERT INTO users (id, email, username, email_verified_at)
                             VALUES ($1, $2, $3, NOW())
                             "#,
-                            new_user_id,
-                            email,
-                            username
-                        )
-                        .execute(&self.pool)
-                    },
-                    &format!("Failed to create social user with email {}", email),
-                )
-                .await?;
+                                new_user_id,
+                                email,
+                                username
+                            )
+                            .execute(&self.pool)
+                        },
+                        &format!("Failed to create social user with email {}", email),
+                    )
+                    .await?;
 
                 debug!(
                     "Created new social user with email {} and id {}",
@@ -316,22 +324,23 @@ impl UserStorePort for PostgresUserStoreAdapter {
             let default_username = format!("user_{}", &new_user_id.to_string()[..8]);
             let username = username.unwrap_or(&default_username);
 
-            self.execute_with_timeout(
-                || {
-                    sqlx::query!(
-                        r#"
+            self.executor
+                .execute_with_timeout(
+                    || {
+                        sqlx::query!(
+                            r#"
                         INSERT INTO users (id, email, username, email_verified_at)
                         VALUES ($1, $2, $3, NOW())
                         "#,
-                        new_user_id,
-                        generated_email,
-                        username
-                    )
-                    .execute(&self.pool)
-                },
-                "Failed to create social user without email",
-            )
-            .await?;
+                            new_user_id,
+                            generated_email,
+                            username
+                        )
+                        .execute(&self.pool)
+                    },
+                    "Failed to create social user without email",
+                )
+                .await?;
 
             debug!(
                 "Created new social user without email, generated {} with id {}",
@@ -341,26 +350,27 @@ impl UserStorePort for PostgresUserStoreAdapter {
         };
 
         let identity_id = Uuid::new_v4();
-        self.execute_with_timeout(
-            || {
-                sqlx::query!(
-                    r#"
+        self.executor
+            .execute_with_timeout(
+                || {
+                    sqlx::query!(
+                        r#"
                     INSERT INTO user_identities (id, user_id, provider, provider_user_id)
                     VALUES ($1, $2, $3, $4)
                     "#,
-                    identity_id,
-                    user_id,
-                    provider,
-                    provider_user_id
-                )
-                .execute(&self.pool)
-            },
-            &format!(
-                "Failed to create identity for provider {} user {}",
-                provider, provider_user_id
-            ),
-        )
-        .await?;
+                        identity_id,
+                        user_id,
+                        provider,
+                        provider_user_id
+                    )
+                    .execute(&self.pool)
+                },
+                &format!(
+                    "Failed to create identity for provider {} user {}",
+                    provider, provider_user_id
+                ),
+            )
+            .await?;
 
         debug!(
             "Created identity for provider {} user {} linking to user {}",
@@ -381,22 +391,23 @@ impl UserStorePort for PostgresUserStoreAdapter {
         token: &str,
         expires_at: OffsetDateTime,
     ) -> AppResult<()> {
-        self.execute_with_timeout(
-            || {
-                sqlx::query!(
-                    r#"
+        self.executor
+            .execute_with_timeout(
+                || {
+                    sqlx::query!(
+                        r#"
                     INSERT INTO email_verification_tokens (token, user_id, expires_at)
                     VALUES ($1, $2, $3)
                     "#,
-                    token,
-                    user_id,
-                    expires_at
-                )
-                .execute(&self.pool)
-            },
-            &format!("Failed to store verification token for user {}", user_id),
-        )
-        .await?;
+                        token,
+                        user_id,
+                        expires_at
+                    )
+                    .execute(&self.pool)
+                },
+                &format!("Failed to store verification token for user {}", user_id),
+            )
+            .await?;
 
         debug!(
             "Successfully stored verification token for user {}",
@@ -407,13 +418,7 @@ impl UserStorePort for PostgresUserStoreAdapter {
 
     #[instrument(skip(self))]
     async fn verify_user_by_token(&self, token: &str) -> AppResult<UserPublic> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| AppError::DatabaseError {
-                message: format!("Failed to begin transaction: {}", e),
-            })?;
+        let mut tx = begin_transaction(&self.pool).await?;
 
         let token_record = sqlx::query!(
             r#"
@@ -463,9 +468,7 @@ impl UserStorePort for PostgresUserStoreAdapter {
             message: format!("Failed to delete verification token: {}", e),
         })?;
 
-        tx.commit().await.map_err(|e| AppError::DatabaseError {
-            message: format!("Failed to commit verification transaction: {}", e),
-        })?;
+        commit_transaction(tx).await?;
 
         debug!(
             "Successfully verified user {} by token",
@@ -481,22 +484,23 @@ impl UserStorePort for PostgresUserStoreAdapter {
 
     #[instrument(skip(self))]
     async fn update_username(&self, user_id: Uuid, new_username: &str) -> AppResult<UserPublic> {
-        self.execute_with_timeout(
-            || {
-                sqlx::query!(
-                    r#"
+        self.executor
+            .execute_with_timeout(
+                || {
+                    sqlx::query!(
+                        r#"
                     UPDATE users
                     SET username = $1
                     WHERE id = $2
                     "#,
-                    new_username,
-                    user_id
-                )
-                .execute(&self.pool)
-            },
-            &format!("Failed to update username for user {}", user_id),
-        )
-        .await?;
+                        new_username,
+                        user_id
+                    )
+                    .execute(&self.pool)
+                },
+                &format!("Failed to update username for user {}", user_id),
+            )
+            .await?;
 
         debug!(
             "Successfully updated username for user {} to {}",
@@ -517,13 +521,7 @@ impl UserStorePort for PostgresUserStoreAdapter {
         role_id: Uuid,
         assigned_by: Uuid,
     ) -> AppResult<UserPublic> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| AppError::DatabaseError {
-                message: format!("Failed to begin transaction: {}", e),
-            })?;
+        let mut tx = begin_transaction(&self.pool).await?;
 
         let role_exists = sqlx::query!(
             r#"
@@ -579,9 +577,7 @@ impl UserStorePort for PostgresUserStoreAdapter {
             message: format!("Failed to assign role to user: {}", e),
         })?;
 
-        tx.commit().await.map_err(|e| AppError::DatabaseError {
-            message: format!("Failed to commit role assignment transaction: {}", e),
-        })?;
+        commit_transaction(tx).await?;
 
         debug!(
             "Successfully assigned role {} to user {} by user {}",

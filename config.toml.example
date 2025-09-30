@@ -24,6 +24,7 @@ jitter_max_percent = 20
 [db]
 database_url = "postgresql://fediplace:dev_password@localhost:5432/fediplace"
 pool_size = 10
+query_timeout_secs = 5
 
 [redis]
 redis_url = "redis://localhost:6379"

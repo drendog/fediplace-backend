@@ -98,6 +98,7 @@ pub struct CacheTtlConfig {
 pub struct DbConfig {
     pub database_url: SecretString,
     pub pool_size: u32,
+    pub query_timeout_secs: u64,
 }
 
 impl Serialize for DbConfig {
@@ -106,9 +107,10 @@ impl Serialize for DbConfig {
         S: serde::Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("DbConfig", 2)?;
+        let mut state = serializer.serialize_struct("DbConfig", 3)?;
         state.serialize_field("database_url", "[REDACTED]")?;
         state.serialize_field("pool_size", &self.pool_size)?;
+        state.serialize_field("query_timeout_secs", &self.query_timeout_secs)?;
         state.end()
     }
 }
@@ -122,12 +124,19 @@ impl<'de> Deserialize<'de> for DbConfig {
         struct DbConfigHelper {
             database_url: String,
             pool_size: u32,
+            #[serde(default = "default_query_timeout")]
+            query_timeout_secs: u64,
+        }
+
+        fn default_query_timeout() -> u64 {
+            5
         }
 
         let helper = DbConfigHelper::deserialize(deserializer)?;
         Ok(DbConfig {
             database_url: SecretString::from(helper.database_url),
             pool_size: helper.pool_size,
+            query_timeout_secs: helper.query_timeout_secs,
         })
     }
 }
@@ -426,6 +435,7 @@ impl Default for Config {
             db: DbConfig {
                 database_url: SecretString::from("postgresql://localhost/fediplace"),
                 pool_size: 10,
+                query_timeout_secs: 5,
             },
             redis: RedisConfig {
                 redis_url: "redis://localhost:6379".to_string(),

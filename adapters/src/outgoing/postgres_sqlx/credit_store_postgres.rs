@@ -1,7 +1,5 @@
 use sqlx::{PgPool, Row};
-use std::{future::Future, time::Duration};
 use time::OffsetDateTime;
-use tokio::time::timeout;
 use tracing::{debug, instrument};
 
 use domain::auth::UserId;
@@ -11,32 +9,19 @@ use fedi_wplace_application::{
     ports::outgoing::credit_store::CreditStorePort,
 };
 
+use super::utils::PostgresExecutor;
+
 pub struct PostgresCreditStoreAdapter {
     pool: PgPool,
+    executor: PostgresExecutor,
 }
 
 impl PostgresCreditStoreAdapter {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
-    }
-
-    async fn execute_with_timeout<T, F, Fut>(
-        &self,
-        operation: F,
-        error_context: &str,
-    ) -> AppResult<T>
-    where
-        F: FnOnce() -> Fut,
-        Fut: Future<Output = Result<T, sqlx::Error>>,
-    {
-        timeout(Duration::from_secs(2), operation())
-            .await
-            .map_err(|_| AppError::DatabaseError {
-                message: "DB timeout".to_string(),
-            })?
-            .map_err(|e| AppError::DatabaseError {
-                message: format!("{}: {}", error_context, e),
-            })
+    pub fn new(pool: PgPool, query_timeout_secs: u64) -> Self {
+        Self {
+            pool,
+            executor: PostgresExecutor::new(query_timeout_secs),
+        }
     }
 }
 
@@ -45,14 +30,15 @@ impl CreditStorePort for PostgresCreditStoreAdapter {
     #[instrument(skip(self))]
     async fn get_user_credits(&self, user_id: &UserId) -> AppResult<CreditBalance> {
         let row = self
+            .executor
             .execute_with_timeout(
                 || {
                     sqlx::query(
                         r"
-                        SELECT available_charges, charges_updated_at
-                        FROM users
-                        WHERE id = $1
-                        ",
+                    SELECT available_charges, charges_updated_at
+                    FROM users
+                    WHERE id = $1
+                    ",
                     )
                     .bind(user_id.as_uuid())
                     .fetch_optional(&self.pool)
@@ -89,23 +75,24 @@ impl CreditStorePort for PostgresCreditStoreAdapter {
         user_id: &UserId,
         balance: &CreditBalance,
     ) -> AppResult<()> {
-        self.execute_with_timeout(
-            || {
-                sqlx::query(
-                    r"
+        self.executor
+            .execute_with_timeout(
+                || {
+                    sqlx::query(
+                        r"
                     UPDATE users
                     SET available_charges = $1, charges_updated_at = $2
                     WHERE id = $3
                     ",
-                )
-                .bind(balance.available_charges)
-                .bind(balance.charges_updated_at)
-                .bind(user_id.as_uuid())
-                .execute(&self.pool)
-            },
-            &format!("Failed to update credits for user {}", user_id.as_uuid()),
-        )
-        .await?;
+                    )
+                    .bind(balance.available_charges)
+                    .bind(balance.charges_updated_at)
+                    .bind(user_id.as_uuid())
+                    .execute(&self.pool)
+                },
+                &format!("Failed to update credits for user {}", user_id.as_uuid()),
+            )
+            .await?;
 
         debug!(
             "Updated credits for user {} to {} at {}",

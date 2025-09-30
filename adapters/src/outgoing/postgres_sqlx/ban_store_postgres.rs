@@ -1,43 +1,25 @@
 use sqlx::{PgPool, types::time::OffsetDateTime};
-use std::{future::Future, time::Duration};
-use tokio::time::timeout;
 use tracing::instrument;
 
 use domain::{
     auth::UserId,
     ban::{Ban, BanId},
 };
-use fedi_wplace_application::{
-    error::{AppError, AppResult},
-    ports::outgoing::ban_store::BanStorePort,
-};
+use fedi_wplace_application::{error::AppResult, ports::outgoing::ban_store::BanStorePort};
+
+use super::utils::PostgresExecutor;
 
 pub struct PostgresBanStoreAdapter {
     pool: PgPool,
+    executor: PostgresExecutor,
 }
 
 impl PostgresBanStoreAdapter {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
-    }
-
-    async fn execute_with_timeout<T, F, Fut>(
-        &self,
-        operation: F,
-        error_context: &str,
-    ) -> AppResult<T>
-    where
-        F: FnOnce() -> Fut,
-        Fut: Future<Output = Result<T, sqlx::Error>>,
-    {
-        timeout(Duration::from_secs(5), operation())
-            .await
-            .map_err(|_| AppError::DatabaseError {
-                message: "DB timeout".to_string(),
-            })?
-            .map_err(|e| AppError::DatabaseError {
-                message: format!("{}: {}", error_context, e),
-            })
+    pub fn new(pool: PgPool, query_timeout_secs: u64) -> Self {
+        Self {
+            pool,
+            executor: PostgresExecutor::new(query_timeout_secs),
+        }
     }
 }
 
@@ -45,7 +27,7 @@ impl PostgresBanStoreAdapter {
 impl BanStorePort for PostgresBanStoreAdapter {
     #[instrument(skip(self, ban))]
     async fn create_ban(&self, ban: &Ban) -> AppResult<()> {
-        self.execute_with_timeout(
+        self.executor.execute_with_timeout(
             || {
                 sqlx::query!(
                     r#"
@@ -69,6 +51,7 @@ impl BanStorePort for PostgresBanStoreAdapter {
                 .execute(&self.pool)
             },
             "Failed to create ban",
+
         )
         .await?;
 
@@ -78,14 +61,15 @@ impl BanStorePort for PostgresBanStoreAdapter {
     #[instrument(skip(self))]
     async fn get_active_ban_by_user_id(&self, user_id: &UserId) -> AppResult<Option<Ban>> {
         let result = self
+            .executor
             .execute_with_timeout(
                 || {
                     sqlx::query!(
                         r#"
-                        SELECT id, user_id, banned_by_user_id, reason, banned_at, expires_at, created_at
-                        FROM banned_users
-                        WHERE user_id = $1
-                        "#,
+                    SELECT id, user_id, banned_by_user_id, reason, banned_at, expires_at, created_at
+                    FROM banned_users
+                    WHERE user_id = $1
+                    "#,
                         user_id.as_uuid()
                     )
                     .fetch_optional(&self.pool)
@@ -113,20 +97,21 @@ impl BanStorePort for PostgresBanStoreAdapter {
 
     #[instrument(skip(self))]
     async fn remove_ban_by_user_id(&self, user_id: &UserId) -> AppResult<()> {
-        self.execute_with_timeout(
-            || {
-                sqlx::query!(
-                    r#"
+        self.executor
+            .execute_with_timeout(
+                || {
+                    sqlx::query!(
+                        r#"
                     DELETE FROM banned_users
                     WHERE user_id = $1
                     "#,
-                    user_id.as_uuid()
-                )
-                .execute(&self.pool)
-            },
-            &format!("Failed to remove ban for user {}", user_id.as_uuid()),
-        )
-        .await?;
+                        user_id.as_uuid()
+                    )
+                    .execute(&self.pool)
+                },
+                &format!("Failed to remove ban for user {}", user_id.as_uuid()),
+            )
+            .await?;
 
         Ok(())
     }
@@ -134,14 +119,15 @@ impl BanStorePort for PostgresBanStoreAdapter {
     #[instrument(skip(self))]
     async fn get_all_active_bans(&self) -> AppResult<Vec<Ban>> {
         let results = self
+            .executor
             .execute_with_timeout(
                 || {
                     sqlx::query!(
                         r#"
-                        SELECT id, user_id, banned_by_user_id, reason, banned_at, expires_at, created_at
-                        FROM banned_users
-                        ORDER BY banned_at DESC
-                        "#
+                    SELECT id, user_id, banned_by_user_id, reason, banned_at, expires_at, created_at
+                    FROM banned_users
+                    ORDER BY banned_at DESC
+                    "#
                     )
                     .fetch_all(&self.pool)
                 },
@@ -168,13 +154,14 @@ impl BanStorePort for PostgresBanStoreAdapter {
     #[instrument(skip(self))]
     async fn remove_user_pixels(&self, user_id: &UserId) -> AppResult<u64> {
         let result = self
+            .executor
             .execute_with_timeout(
                 || {
                     sqlx::query!(
                         r#"
-                        DELETE FROM pixel_history
-                        WHERE user_id = $1
-                        "#,
+                    DELETE FROM pixel_history
+                    WHERE user_id = $1
+                    "#,
                         user_id.as_uuid()
                     )
                     .execute(&self.pool)
