@@ -22,3 +22,12 @@ Make sure to set up `.env` from `.env.example` with your own secrets, and make s
 
 Strict hexagonal architecture (ports and adapters) with dependency inversion: Domain (pure logic) ← Application (use cases) ← Adapters ← Server (composition).
 Each layer is separated into its own crate, and architectural violations are enforced via `deny.toml` and `clippy.toml`.
+
+
+## Roadmap to First Release
+
+- [ ] **Worlds System** - Multi-world support
+- [ ] **Report Users** - User reporting
+- [ ] **Rules** - Per-world and instance-level rules enforcement
+- [ ] **Minimal Federation** - Temporary read-only worlds federation between instances
+- [ ] **Testing** - Minimal unit and integration tests for critical areas
