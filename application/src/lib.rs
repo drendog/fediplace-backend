@@ -17,3 +17,4 @@ pub mod infrastructure_config;
 pub mod ports;
 pub mod subscriptions;
 pub mod tiles;
+pub mod world;

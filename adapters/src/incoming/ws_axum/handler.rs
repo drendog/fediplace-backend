@@ -9,7 +9,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::incoming::ws_axum::protocol::WSMessage;
 use crate::shared::app_state::AppState;
-use domain::{events::TileVersionEvent, tile::TileVersion};
+use domain::{events::TileVersionEvent, tile::TileVersion, world::WorldId};
 
 use super::{buffer::BufferedMessageHandler, connection::Connection};
 
@@ -44,8 +44,8 @@ pub struct ConnectionHandler {
 }
 
 impl ConnectionHandler {
-    pub fn new(socket: WebSocket, state: &AppState, client_ip: IpAddr) -> Self {
-        let (connection, message_receiver) = Connection::new(socket, client_ip);
+    pub fn new(socket: WebSocket, state: &AppState, client_ip: IpAddr, world_id: WorldId) -> Self {
+        let (connection, message_receiver) = Connection::new(socket, client_ip, world_id);
         let broadcast_receiver = state.ws_broadcast.subscribe();
 
         Self {
@@ -57,8 +57,8 @@ impl ConnectionHandler {
         }
     }
 
-    pub fn new_with_buffering(socket: WebSocket, state: &AppState, client_ip: IpAddr) -> Self {
-        let (connection, message_receiver) = Connection::new(socket, client_ip);
+    pub fn new_with_buffering(socket: WebSocket, state: &AppState, client_ip: IpAddr, world_id: WorldId) -> Self {
+        let (connection, message_receiver) = Connection::new(socket, client_ip, world_id);
         let broadcast_receiver = state.ws_broadcast.subscribe();
 
         let (outgoing_sender, outgoing_receiver) = mpsc::unbounded_channel();

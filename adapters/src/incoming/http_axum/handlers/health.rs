@@ -4,7 +4,10 @@ use axum::{Json, extract::State};
 use crate::incoming::http_axum::dto::responses::ApiResponseValue;
 use crate::incoming::http_axum::{dto::responses::ApiResponse, error_mapper::HttpError};
 use crate::shared::app_state::AppState;
-use fedi_wplace_application::ports::incoming::tiles::MetricsQueryUseCase;
+use fedi_wplace_application::{
+    error::AppError,
+    ports::incoming::tiles::MetricsQueryUseCase,
+};
 
 #[cfg_attr(feature = "docs", utoipa::path(
     get,
@@ -36,8 +39,20 @@ use fedi_wplace_application::ports::incoming::tiles::MetricsQueryUseCase;
 pub async fn health_check(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, HttpError> {
+    let default_world = state
+        .world_service
+        .get_default_world()
+        .await
+        .map_err(HttpError)?
+        .ok_or_else(|| HttpError(AppError::NotFound {
+            message: "Default world not found".to_string(),
+        }))?;
+
     let metrics_uc: &dyn MetricsQueryUseCase = &*state.metrics_query_service;
-    let metrics = metrics_uc.get_metrics().await.map_err(HttpError)?;
+    let metrics = metrics_uc
+        .get_metrics(&default_world.id)
+        .await
+        .map_err(HttpError)?;
 
     Ok(Json(ApiResponse::success_with_data(Some(
         serde_json::json!({

@@ -3,7 +3,6 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::sync::{Arc, atomic::AtomicUsize};
 use tokio::sync::broadcast;
 
-use domain::credits::CreditConfig;
 use domain::{events::TileVersionEvent, tile::PaletteBufferPool};
 use fedi_wplace_adapters::shared::app_state::AppState as AdaptersAppState;
 use fedi_wplace_adapters::{
@@ -24,6 +23,7 @@ use fedi_wplace_adapters::{
             credit_store_postgres::PostgresCreditStoreAdapter,
             pixel_history_store_postgres::PostgresPixelHistoryStoreAdapter,
             user_store_postgres::PostgresUserStoreAdapter,
+            world_store_postgres::PostgresWorldStoreAdapter,
         },
         redis_deadpool::{
             subscription_redis::RedisSubscriptionAdapter, tile_cache_redis::RedisTileCacheAdapter,
@@ -41,7 +41,7 @@ use fedi_wplace_application::ports::outgoing::{
     ban_store::BanStorePort, credit_store::CreditStorePort, email_sender::EmailSenderPort,
     events::EventsPort, image_codec::ImageCodecPort, password_hasher::PasswordHasherPort,
     pixel_history_store::PixelHistoryStorePort, subscription_port::SubscriptionPort,
-    tile_cache::TileCachePort, user_store::UserStorePort,
+    tile_cache::TileCachePort, user_store::UserStorePort, world_store::WorldStorePort,
 };
 use fedi_wplace_application::{
     admin::service::AdminService,
@@ -54,6 +54,7 @@ use fedi_wplace_application::{
     subscriptions::service::SubscriptionService,
     tiles::service::PaletteColorLookup,
     tiles::service::{TileService, TileServiceDeps},
+    world::service::WorldService,
 };
 
 #[derive(Clone)]
@@ -66,6 +67,7 @@ pub struct AppState {
     pub auth_service: Arc<dyn AuthUseCase>,
     pub admin_service: Arc<dyn AdminUseCase>,
     pub ban_service: Arc<dyn BanUseCase>,
+    pub world_service: Arc<WorldService>,
     pub ws_broadcast: broadcast::Sender<TileVersionEvent>,
     pub websocket_rate_limiter: Option<Arc<RateLimiter>>,
     pub active_websocket_connections: Arc<AtomicUsize>,
@@ -92,6 +94,7 @@ impl AppState {
         let auth_service = Self::create_auth_service(&config, &db_pool)?;
         let admin_service = Self::create_admin_service(&config, &db_pool);
         let ban_service = Self::create_ban_service(&config, &db_pool);
+        let world_service = Self::create_world_service(&config, &db_pool);
 
         let websocket_rate_limiter = if config.rate_limit.enabled {
             Some(create_websocket_rate_limiter(&config.rate_limit))
@@ -108,6 +111,7 @@ impl AppState {
             auth_service,
             admin_service,
             ban_service,
+            world_service,
             ws_broadcast,
             websocket_rate_limiter,
             active_websocket_connections: Arc::new(AtomicUsize::new(0)),
@@ -172,10 +176,9 @@ impl AppState {
                 config.tiles.tile_size,
                 config.db.query_timeout_secs,
             ));
-        let credit_store: Arc<dyn CreditStorePort> = Arc::new(PostgresCreditStoreAdapter::new(
-            db_pool.clone(),
-            config.db.query_timeout_secs,
-        ));
+        let credit_store_port: Arc<dyn CreditStorePort> = Arc::new(
+            PostgresCreditStoreAdapter::new(db_pool.clone(), config.db.query_timeout_secs),
+        );
         let codec_port: Arc<dyn ImageCodecPort> = Arc::new(ImageWebpAdapter::new(webp_config));
         let events_port: Arc<dyn EventsPort> =
             Arc::new(TokioBroadcastEventsAdapter::new(ws_broadcast.clone()));
@@ -202,11 +205,7 @@ impl AppState {
                 events_port,
                 task_spawn_port: Arc::new(TokioTaskSpawnAdapter::new()),
                 pixel_history_store,
-                credit_store,
-                credit_config: CreditConfig::new(
-                    config.credits.max_charges,
-                    config.credits.charge_cooldown_seconds,
-                ),
+                credit_store: credit_store_port,
             },
         )?;
 
@@ -221,6 +220,7 @@ impl AppState {
             redis_pool.clone(),
             config.ws_policy.max_tiles_per_ip,
             config.ws_policy.subscription_ttl_secs * 1000,
+            &config.environment.env,
         ));
         Arc::new(SubscriptionService::new(subscription_port))
     }
@@ -285,6 +285,14 @@ impl AppState {
         Arc::new(BanService::new(ban_store_port, user_store_port))
     }
 
+    fn create_world_service(config: &Config, db_pool: &PgPool) -> Arc<WorldService> {
+        let world_store_port: Arc<dyn WorldStorePort> = Arc::new(PostgresWorldStoreAdapter::new(
+            db_pool.clone(),
+            config.db.query_timeout_secs,
+        ));
+        Arc::new(WorldService::new(world_store_port))
+    }
+
     pub fn db_pool(&self) -> &PgPool {
         &self.db_pool
     }
@@ -319,6 +327,11 @@ impl AppState {
             self.db_pool.clone(),
             self.config.db.query_timeout_secs,
         ));
+        let credit_store_port: Arc<dyn CreditStorePort> =
+            Arc::new(PostgresCreditStoreAdapter::new(
+                self.db_pool.clone(),
+                self.config.db.query_timeout_secs,
+            ));
         let admin_service = Arc::new(AdminService::new(Arc::clone(&user_store_port)));
 
         let adapters_state = AdaptersAppState::new(
@@ -333,6 +346,8 @@ impl AppState {
             self.auth_service,
             admin_service,
             self.ban_service,
+            self.world_service,
+            credit_store_port,
             self.ws_broadcast,
             self.websocket_rate_limiter,
             self.active_websocket_connections,

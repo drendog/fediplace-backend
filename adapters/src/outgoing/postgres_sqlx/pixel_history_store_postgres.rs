@@ -1,6 +1,7 @@
 use domain::{
     action::PaintAction,
     coords::{GlobalCoord, TileCoord},
+    world::WorldId,
 };
 use sqlx::{PgPool, types::time::OffsetDateTime};
 use tracing::instrument;
@@ -32,11 +33,17 @@ impl PostgresPixelHistoryStoreAdapter {
 #[async_trait::async_trait]
 impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
     #[instrument(skip(self, actions))]
-    async fn record_paint_actions(&self, actions: &[PaintAction]) -> AppResult<()> {
+    async fn record_paint_actions(
+        &self,
+        world_id: &WorldId,
+        actions: &[PaintAction],
+    ) -> AppResult<()> {
         if actions.is_empty() {
             return Ok(());
         }
 
+        let world_uuid = world_id.as_uuid();
+        let mut world_ids: Vec<Uuid> = Vec::with_capacity(actions.len());
         let mut user_ids: Vec<Uuid> = Vec::with_capacity(actions.len());
         let mut global_xs: Vec<i32> = Vec::with_capacity(actions.len());
         let mut global_ys: Vec<i32> = Vec::with_capacity(actions.len());
@@ -44,7 +51,8 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
         let mut timestamps: Vec<OffsetDateTime> = Vec::with_capacity(actions.len());
 
         for action in actions {
-            user_ids.push(action.user_id.0);
+            world_ids.push(*world_uuid);
+            user_ids.push(*action.user_id.as_uuid());
             global_xs.push(action.global_coord.x);
             global_ys.push(action.global_coord.y);
             color_ids.push(i16::from(action.color_id.0));
@@ -55,14 +63,15 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
             || {
                 sqlx::query!(
                     r#"
-                    INSERT INTO pixel_history (user_id, global_x, global_y, color_id, created_at)
-                    SELECT * FROM UNNEST($1::UUID[], $2::INTEGER[], $3::INTEGER[], $4::SMALLINT[], $5::TIMESTAMPTZ[])
-                    ON CONFLICT (global_x, global_y)
+                    INSERT INTO pixel_history (world_id, user_id, global_x, global_y, color_id, created_at)
+                    SELECT * FROM UNNEST($1::UUID[], $2::UUID[], $3::INTEGER[], $4::INTEGER[], $5::SMALLINT[], $6::TIMESTAMPTZ[])
+                    ON CONFLICT (world_id, global_x, global_y)
                     DO UPDATE SET
                         user_id = EXCLUDED.user_id,
                         color_id = EXCLUDED.color_id,
                         created_at = EXCLUDED.created_at
                     "#,
+                    &world_ids[..],
                     &user_ids[..],
                     &global_xs[..],
                     &global_ys[..],
@@ -80,7 +89,12 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
     }
 
     #[instrument(skip(self))]
-    async fn get_history_for_tile(&self, coord: TileCoord) -> AppResult<Vec<PixelHistoryEntry>> {
+    async fn get_history_for_tile(
+        &self,
+        world_id: &WorldId,
+        coord: TileCoord,
+    ) -> AppResult<Vec<PixelHistoryEntry>> {
+        let world_uuid = world_id.as_uuid();
         let tile_size = self.tile_size as i32;
         let min_x = coord.x * tile_size;
         let max_x = min_x + tile_size - 1;
@@ -102,10 +116,12 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
                         ph.created_at
                     FROM pixel_history ph
                     JOIN users u ON ph.user_id = u.id
-                    WHERE ph.global_x >= $1 AND ph.global_x <= $2
-                      AND ph.global_y >= $3 AND ph.global_y <= $4
+                    WHERE ph.world_id = $1
+                      AND ph.global_x >= $2 AND ph.global_x <= $3
+                      AND ph.global_y >= $4 AND ph.global_y <= $5
                     ORDER BY ph.created_at DESC
                     "#,
+                        world_uuid,
                         min_x,
                         max_x,
                         min_y,
@@ -147,7 +163,12 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
     }
 
     #[instrument(skip(self))]
-    async fn get_current_tile_state(&self, coord: TileCoord) -> AppResult<Vec<(usize, usize, u8)>> {
+    async fn get_current_tile_state(
+        &self,
+        world_id: &WorldId,
+        coord: TileCoord,
+    ) -> AppResult<Vec<(usize, usize, u8)>> {
+        let world_uuid = world_id.as_uuid();
         let tile_size = self.tile_size as i32;
         let min_x = coord.x * tile_size;
         let max_x = min_x + tile_size - 1;
@@ -165,9 +186,11 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
                         global_y,
                         color_id
                     FROM pixel_history
-                    WHERE global_x >= $1 AND global_x <= $2
-                      AND global_y >= $3 AND global_y <= $4
+                    WHERE world_id = $1
+                      AND global_x >= $2 AND global_x <= $3
+                      AND global_y >= $4 AND global_y <= $5
                     "#,
+                        world_uuid,
                         min_x,
                         max_x,
                         min_y,
@@ -201,7 +224,12 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
     }
 
     #[instrument(skip(self))]
-    async fn get_distinct_tile_count(&self, tile_size: usize) -> AppResult<i64> {
+    async fn get_distinct_tile_count(
+        &self,
+        world_id: &WorldId,
+        tile_size: usize,
+    ) -> AppResult<i64> {
+        let world_uuid = world_id.as_uuid();
         let tile_size = tile_size as i32;
 
         let result = self
@@ -212,8 +240,10 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
                         r#"
                     SELECT COUNT(DISTINCT (global_x / $1, global_y / $1)) as count
                     FROM pixel_history
+                    WHERE world_id = $2
                     "#,
-                        tile_size
+                        tile_size,
+                        world_uuid
                     )
                     .fetch_one(&self.pool)
                 },
@@ -227,7 +257,12 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
     }
 
     #[instrument(skip(self))]
-    async fn get_pixel_info(&self, coord: GlobalCoord) -> AppResult<Option<PixelInfo>> {
+    async fn get_pixel_info(
+        &self,
+        world_id: &WorldId,
+        coord: GlobalCoord,
+    ) -> AppResult<Option<PixelInfo>> {
+        let world_uuid = world_id.as_uuid();
         let pixel_info = self
             .executor
             .execute_with_timeout(
@@ -241,8 +276,9 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
                         ph.created_at
                     FROM pixel_history ph
                     JOIN users u ON ph.user_id = u.id
-                    WHERE ph.global_x = $1 AND ph.global_y = $2
+                    WHERE ph.world_id = $1 AND ph.global_x = $2 AND ph.global_y = $3
                     "#,
+                        world_uuid,
                         coord.x,
                         coord.y
                     )

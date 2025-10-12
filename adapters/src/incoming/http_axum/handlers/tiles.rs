@@ -1,12 +1,13 @@
 use axum::{
     Json,
-    extract::State,
+    extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
 use axum_login::AuthSession;
 use axum_valid::Valid;
-use domain::auth::UserId;
+use domain::{auth::UserId, world::WorldId};
+use uuid::Uuid;
 
 use fedi_wplace_application::error::AppError;
 
@@ -14,7 +15,7 @@ use crate::incoming::http_axum::{
     auth::backend::AuthBackend,
     core::{
         etag,
-        extractors::{IfNoneMatchHeader, TilePath, extract_tile_coord},
+        extractors::{IfNoneMatchHeader, extract_tile_coord},
     },
     dto::{
         requests::BatchPaintPixelsRequest,
@@ -42,7 +43,12 @@ fn is_not_modified(if_none_match: &IfNoneMatchHeader, etag: &str) -> bool {
 
 #[cfg_attr(feature = "docs", utoipa::path(
     get,
-    path = "/tiles/{x}/{y}",
+    path = "/worlds/{world_id}/tiles/{x}/{y}",
+    params(
+        ("world_id" = Uuid, Path, description = "World ID"),
+        ("x" = i32, Path, description = "Tile X coordinate"),
+        ("y" = i32, Path, description = "Tile Y coordinate")
+    ),
     responses(
         (status = 200, response = TileImageResponse),
         (status = 304, response = NotModifiedResponse),
@@ -58,16 +64,17 @@ fn is_not_modified(if_none_match: &IfNoneMatchHeader, etag: &str) -> bool {
     operation_id = "get_tile"
 ))]
 pub async fn serve_tile(
-    tile_path: TilePath,
+    Path((world_id, x, y)): Path<(Uuid, i32, i32)>,
     _headers: HeaderMap,
     if_none_match: IfNoneMatchHeader,
     State(state): State<AppState>,
 ) -> Result<Response, HttpError> {
-    let coord = extract_tile_coord(tile_path)?;
+    let coord = extract_tile_coord(Path((x, y)))?;
+    let world_id = WorldId::from_uuid(world_id);
 
     let tile_query_uc: &dyn TilesQueryUseCase = &*state.tiles_query_service;
     let tile_data = tile_query_uc
-        .get_tile_webp(coord)
+        .get_tile_webp(&world_id, coord)
         .await
         .map_err(HttpError)?;
 
@@ -89,7 +96,12 @@ pub async fn serve_tile(
 
 #[cfg_attr(feature = "docs", utoipa::path(
     head,
-    path = "/tiles/{x}/{y}",
+    path = "/worlds/{world_id}/tiles/{x}/{y}",
+    params(
+        ("world_id" = Uuid, Path, description = "World ID"),
+        ("x" = i32, Path, description = "Tile X coordinate"),
+        ("y" = i32, Path, description = "Tile Y coordinate")
+    ),
     responses(
         (status = 200, description = "Tile headers - HEAD", headers(
             ("ETag" = String),
@@ -111,16 +123,17 @@ pub async fn serve_tile(
     operation_id = "get_tile_head"
 ))]
 pub async fn serve_tile_head(
-    tile_path: TilePath,
+    Path((world_id, x, y)): Path<(Uuid, i32, i32)>,
     _headers: HeaderMap,
     if_none_match: IfNoneMatchHeader,
     State(state): State<AppState>,
 ) -> Result<Response, HttpError> {
-    let coord = extract_tile_coord(tile_path)?;
+    let coord = extract_tile_coord(Path((x, y)))?;
+    let world_id = WorldId::from_uuid(world_id);
 
     let tile_query_uc: &dyn TilesQueryUseCase = &*state.tiles_query_service;
     let tile_version = tile_query_uc
-        .get_tile_version(coord)
+        .get_tile_version(&world_id, coord)
         .await
         .map_err(HttpError)?;
 
@@ -139,7 +152,12 @@ pub async fn serve_tile_head(
 
 #[cfg_attr(feature = "docs", utoipa::path(
     post,
-    path = "/tiles/{x}/{y}/pixels",
+    path = "/worlds/{world_id}/tiles/{x}/{y}/pixels",
+    params(
+        ("world_id" = Uuid, Path, description = "World ID"),
+        ("x" = i32, Path, description = "Tile X coordinate"),
+        ("y" = i32, Path, description = "Tile Y coordinate")
+    ),
     request_body = BatchPaintPixelsRequest,
     responses(
         (status = 200, body = PaintPixelResponse),
@@ -157,7 +175,7 @@ pub async fn serve_tile_head(
     operation_id = "paint_pixels_batch"
 ))]
 pub async fn paint_pixels_batch(
-    tile_path: TilePath,
+    Path((world_id, x, y)): Path<(Uuid, i32, i32)>,
     State(state): State<AppState>,
     auth_session: AuthSession<AuthBackend>,
     Valid(Json(paint_req)): Valid<Json<BatchPaintPixelsRequest>>,
@@ -166,7 +184,8 @@ pub async fn paint_pixels_batch(
         return Err(HttpError(AppError::Unauthorized));
     };
 
-    let tile_coord = extract_tile_coord(tile_path)?;
+    let tile_coord = extract_tile_coord(Path((x, y)))?;
+    let world_id = WorldId::from_uuid(world_id);
 
     let pixels: Vec<_> = paint_req
         .pixels
@@ -176,7 +195,7 @@ pub async fn paint_pixels_batch(
 
     let paint_uc: &dyn PaintPixelsUseCase = &*state.paint_pixels_service;
     let painting_result = paint_uc
-        .paint_pixels_batch(UserId::from_uuid(user.id), tile_coord, &pixels)
+        .paint_pixels_batch(&world_id, UserId::from_uuid(user.id), tile_coord, &pixels)
         .await
         .map_err(HttpError)?;
 

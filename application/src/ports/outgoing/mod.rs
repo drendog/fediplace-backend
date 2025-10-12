@@ -12,3 +12,4 @@ pub mod task_spawn;
 pub mod tile_cache;
 pub mod timeout;
 pub mod user_store;
+pub mod world_store;

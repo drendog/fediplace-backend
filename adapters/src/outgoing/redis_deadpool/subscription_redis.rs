@@ -9,8 +9,8 @@ use deadpool_redis::{
 use tokio::time::timeout;
 use tracing::debug;
 
-use crate::shared::net::ip_key;
-use domain::coords::TileCoord;
+use crate::{outgoing::redis_deadpool::keys::RedisKeyBuilder, shared::net::ip_key};
+use domain::{coords::TileCoord, world::WorldId};
 use fedi_wplace_application::{
     contracts::subscriptions::{SubscriptionRejection, SubscriptionResult},
     error::{AppError, AppResult},
@@ -87,15 +87,26 @@ pub struct RedisSubscriptionConfig {
 pub struct RedisSubscriptionAdapter {
     redis_pool: RedisPool,
     policy: SubscriptionPolicyConfig,
+    key_builder: RedisKeyBuilder,
 }
 
 impl RedisSubscriptionAdapter {
-    pub fn new(redis_pool: RedisPool, max_tiles_per_ip: usize, subscription_ttl_ms: u64) -> Self {
+    pub fn new(
+        redis_pool: RedisPool,
+        max_tiles_per_ip: usize,
+        subscription_ttl_ms: u64,
+        environment: &str,
+    ) -> Self {
         let policy = SubscriptionPolicyConfig {
             max_tiles_per_ip,
             ttl_ms: subscription_ttl_ms,
         };
-        Self { redis_pool, policy }
+        let key_builder = RedisKeyBuilder::new(environment);
+        Self {
+            redis_pool,
+            policy,
+            key_builder,
+        }
     }
 
     fn subscription_policy(&self) -> &SubscriptionPolicyConfig {
@@ -309,9 +320,17 @@ async fn refresh_subscription_expiration_times(
 
 #[async_trait::async_trait]
 impl SubscriptionPort for RedisSubscriptionAdapter {
-    async fn subscribe(&self, ip: IpAddr, tiles: &[TileCoord]) -> AppResult<SubscriptionResult> {
+    async fn subscribe(
+        &self,
+        ip: IpAddr,
+        world_id: &WorldId,
+        tiles: &[TileCoord],
+    ) -> AppResult<SubscriptionResult> {
         let policy = self.subscription_policy();
-        let ip_key = ip_key(ip);
+        let ip_key_raw = ip_key(ip);
+        let ip_key = self
+            .key_builder
+            .subscription_key(world_id.as_uuid(), &ip_key_raw);
 
         let redis_connection_timeout = Duration::from_millis(500);
         let mut redis_conn = timeout(redis_connection_timeout, self.redis_pool.get())
@@ -372,8 +391,16 @@ impl SubscriptionPort for RedisSubscriptionAdapter {
         Ok(SubscriptionResult { accepted, rejected })
     }
 
-    async fn unsubscribe(&self, ip: IpAddr, tiles: &[TileCoord]) -> AppResult<Vec<TileCoord>> {
-        let ip_key = ip_key(ip);
+    async fn unsubscribe(
+        &self,
+        ip: IpAddr,
+        world_id: &WorldId,
+        tiles: &[TileCoord],
+    ) -> AppResult<Vec<TileCoord>> {
+        let ip_key_raw = ip_key(ip);
+        let ip_key = self
+            .key_builder
+            .subscription_key(world_id.as_uuid(), &ip_key_raw);
 
         let redis_connection_timeout = Duration::from_millis(500);
         let mut redis_conn = timeout(redis_connection_timeout, self.redis_pool.get())
@@ -408,13 +435,21 @@ impl SubscriptionPort for RedisSubscriptionAdapter {
         Ok(unsubscribed)
     }
 
-    async fn refresh_subscriptions(&self, ip: IpAddr, tiles: &[TileCoord]) -> AppResult<()> {
+    async fn refresh_subscriptions(
+        &self,
+        ip: IpAddr,
+        world_id: &WorldId,
+        tiles: &[TileCoord],
+    ) -> AppResult<()> {
         if tiles.is_empty() {
             return Ok(());
         }
 
         let policy = self.subscription_policy();
-        let ip_key = ip_key(ip);
+        let ip_key_raw = ip_key(ip);
+        let ip_key = self
+            .key_builder
+            .subscription_key(world_id.as_uuid(), &ip_key_raw);
 
         let redis_connection_timeout = Duration::from_millis(500);
         let mut redis_conn = timeout(redis_connection_timeout, self.redis_pool.get())

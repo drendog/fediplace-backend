@@ -164,22 +164,23 @@ impl UserStorePort for PostgresUserStoreAdapter {
 
     #[instrument(skip(self))]
     async fn find_user_by_username(&self, username: &str) -> AppResult<Option<UserPublic>> {
-        let row = self.executor.execute_with_timeout(
-            || {
-                sqlx::query!(
-                    r#"
+        let row = self
+            .executor
+            .execute_with_timeout(
+                || {
+                    sqlx::query!(
+                        r#"
                     SELECT id, email, username, email_verified_at, available_charges, charges_updated_at
                     FROM users
                     WHERE username = $1
                     "#,
-                    username
-                )
-                .fetch_optional(&self.pool)
-            },
-            &format!("Failed to find user by username {}", username),
-
-        )
-        .await?;
+                        username
+                    )
+                    .fetch_optional(&self.pool)
+                },
+                &format!("Failed to find user by username {}", username),
+            )
+            .await?;
 
         if let Some(record) = row {
             debug!("Found user by username {} with id {}", username, record.id);
@@ -202,22 +203,23 @@ impl UserStorePort for PostgresUserStoreAdapter {
 
     #[instrument(skip(self))]
     async fn find_user_by_id(&self, id: Uuid) -> AppResult<Option<UserPublic>> {
-        let row = self.executor.execute_with_timeout(
-            || {
-                sqlx::query!(
-                    r#"
+        let row = self
+            .executor
+            .execute_with_timeout(
+                || {
+                    sqlx::query!(
+                        r#"
                     SELECT id, email, username, email_verified_at, available_charges, charges_updated_at
                     FROM users
                     WHERE id = $1
                     "#,
-                    id
-                )
-                .fetch_optional(&self.pool)
-            },
-            &format!("Failed to find user by id {}", id),
-
-        )
-        .await?;
+                        id
+                    )
+                    .fetch_optional(&self.pool)
+                },
+                &format!("Failed to find user by id {}", id),
+            )
+            .await?;
 
         if let Some(record) = row {
             debug!("Found user by id {}", id);
@@ -246,27 +248,28 @@ impl UserStorePort for PostgresUserStoreAdapter {
         email: Option<&str>,
         username: Option<&str>,
     ) -> AppResult<UserPublic> {
-        let existing_identity = self.executor.execute_with_timeout(
-            || {
-                sqlx::query!(
-                    r#"
+        let existing_identity = self
+            .executor
+            .execute_with_timeout(
+                || {
+                    sqlx::query!(
+                        r#"
                     SELECT ui.user_id, u.email, u.username, u.email_verified_at, u.available_charges, u.charges_updated_at
                     FROM user_identities ui
                     JOIN users u ON ui.user_id = u.id
                     WHERE ui.provider = $1 AND ui.provider_user_id = $2
                     "#,
-                    provider,
-                    provider_user_id
-                )
-                .fetch_optional(&self.pool)
-            },
-            &format!(
-                "Failed to find identity for provider {} user {}",
-                provider, provider_user_id
-            ),
-
-        )
-        .await?;
+                        provider,
+                        provider_user_id
+                    )
+                    .fetch_optional(&self.pool)
+                },
+                &format!(
+                    "Failed to find identity for provider {} user {}",
+                    provider, provider_user_id
+                ),
+            )
+            .await?;
 
         if let Some(identity_record) = existing_identity {
             debug!(

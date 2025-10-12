@@ -7,3 +7,4 @@ pub mod credits;
 pub mod error;
 pub mod events;
 pub mod tile;
+pub mod world;

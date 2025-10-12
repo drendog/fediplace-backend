@@ -1,11 +1,26 @@
 use std::net::IpAddr;
 
 use crate::{contracts::subscriptions::SubscriptionResult, error::AppResult};
-use domain::coords::TileCoord;
+use domain::{coords::TileCoord, world::WorldId};
 
 #[async_trait::async_trait]
 pub trait SubscriptionPort: Send + Sync {
-    async fn subscribe(&self, ip: IpAddr, tiles: &[TileCoord]) -> AppResult<SubscriptionResult>;
-    async fn unsubscribe(&self, ip: IpAddr, tiles: &[TileCoord]) -> AppResult<Vec<TileCoord>>;
-    async fn refresh_subscriptions(&self, ip: IpAddr, tiles: &[TileCoord]) -> AppResult<()>;
+    async fn subscribe(
+        &self,
+        ip: IpAddr,
+        world_id: &WorldId,
+        tiles: &[TileCoord],
+    ) -> AppResult<SubscriptionResult>;
+    async fn unsubscribe(
+        &self,
+        ip: IpAddr,
+        world_id: &WorldId,
+        tiles: &[TileCoord],
+    ) -> AppResult<Vec<TileCoord>>;
+    async fn refresh_subscriptions(
+        &self,
+        ip: IpAddr,
+        world_id: &WorldId,
+        tiles: &[TileCoord],
+    ) -> AppResult<()>;
 }

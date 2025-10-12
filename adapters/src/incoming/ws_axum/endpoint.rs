@@ -105,11 +105,28 @@ pub async fn websocket_handler(
             .into_response();
     }
 
+    let default_world = match state.world_service.get_default_world().await {
+        Ok(Some(world)) => world,
+        Ok(None) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Default world not found",
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch default world: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")
+                .into_response();
+        }
+    };
+    let default_world_id = default_world.id;
+
     ws.on_upgrade(move |socket| {
         let handler = if state.config.websocket.connection_buffer_size > 0 {
-            ConnectionHandler::new_with_buffering(socket, &state, client_ip)
+            ConnectionHandler::new_with_buffering(socket, &state, client_ip, default_world_id)
         } else {
-            ConnectionHandler::new(socket, &state, client_ip)
+            ConnectionHandler::new(socket, &state, client_ip, default_world_id)
         };
         handler.run(state)
     })

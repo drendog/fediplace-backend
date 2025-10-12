@@ -29,6 +29,7 @@ use crate::{
             palette::get_palette,
             pixel_info::get_pixel_info,
             tiles::{paint_pixels_batch, serve_tile, serve_tile_head},
+            worlds::{create_world, get_world_by_id, get_world_by_name, list_worlds},
         },
         middleware::{
             admin_auth::require_admin_role,
@@ -59,18 +60,20 @@ pub async fn build_application_router(
     let (auth_routes, auth_layer) =
         build_auth_routes(state, user_store, password_hasher, ban_store).await?;
     let tile_routes = build_tile_routes_with_auth(state, auth_layer.clone());
-    let admin_routes = build_admin_routes_with_auth(auth_layer);
+    let admin_routes = build_admin_routes_with_auth(auth_layer.clone());
+
+    let world_routes = build_world_routes_with_auth(auth_layer);
 
     Ok(core_routes
         .merge(tile_routes)
         .merge(auth_routes)
-        .merge(admin_routes))
+        .merge(admin_routes)
+        .merge(world_routes))
 }
 
 fn build_core_routes() -> Router<AppState> {
     let router = Router::new()
         .route("/palette", get(get_palette))
-        .route("/pixel/{x}/{y}", get(get_pixel_info))
         .route("/live", get(websocket_handler));
 
     #[cfg(feature = "docs")]
@@ -88,8 +91,17 @@ fn build_tile_routes_with_auth(
     state: &AppState,
     auth_layer: AuthManagerLayer<AuthBackend, RedisStore<Client>>,
 ) -> Router<AppState> {
-    let tile_routes = Router::new().route("/tiles/{x}/{y}", get(serve_tile).head(serve_tile_head));
-    let paint_routes = Router::new().route("/tiles/{x}/{y}/pixels", post(paint_pixels_batch));
+    let tile_routes = Router::new()
+        .route(
+            "/worlds/{world_id}/tiles/{x}/{y}",
+            get(serve_tile).head(serve_tile_head),
+        )
+        .route("/worlds/{world_id}/pixels/{x}/{y}", get(get_pixel_info));
+
+    let paint_routes = Router::new().route(
+        "/worlds/{world_id}/tiles/{x}/{y}/pixels",
+        post(paint_pixels_batch),
+    );
 
     let tile_routes_final = if state.config.rate_limit.enabled {
         let tile_limiter = create_tile_rate_limiter(&state.config.rate_limit);
@@ -125,6 +137,21 @@ fn build_admin_routes_with_auth(
         .route("/bans", get(list_active_bans))
         .layer(middleware::from_fn(require_admin_role))
         .with_auth(auth_layer)
+}
+
+fn build_world_routes_with_auth(
+    auth_layer: AuthManagerLayer<AuthBackend, RedisStore<Client>>,
+) -> Router<AppState> {
+    let public_routes = Router::new()
+        .route("/worlds", get(list_worlds))
+        .route("/worlds/{world_id}", get(get_world_by_id))
+        .route("/worlds/by-name/{name}", get(get_world_by_name));
+
+    let authenticated_routes = Router::new()
+        .route("/worlds", post(create_world))
+        .with_auth(auth_layer);
+
+    public_routes.merge(authenticated_routes)
 }
 
 async fn build_auth_routes(
