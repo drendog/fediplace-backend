@@ -1,6 +1,7 @@
 pub mod action;
 pub mod auth;
 pub mod ban;
+pub mod canvas_config;
 pub mod color;
 pub mod coords;
 pub mod credits;

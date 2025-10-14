@@ -10,6 +10,7 @@ compile_error!("application must not depend on adapters/framework crates");
 pub mod admin;
 pub mod auth;
 pub mod ban;
+pub mod canvas;
 pub mod config;
 pub mod contracts;
 pub mod error;

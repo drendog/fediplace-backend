@@ -47,6 +47,7 @@ use fedi_wplace_application::{
     admin::service::AdminService,
     auth::service::AuthService,
     ban::service::BanService,
+    canvas::service::CanvasConfigService,
     config::TileSettings,
     ports::incoming::{
         admin::AdminUseCase, auth::AuthUseCase, ban::BanUseCase, subscriptions::SubscriptionUseCase,
@@ -68,6 +69,7 @@ pub struct AppState {
     pub admin_service: Arc<dyn AdminUseCase>,
     pub ban_service: Arc<dyn BanUseCase>,
     pub world_service: Arc<WorldService>,
+    pub canvas_config_service: Arc<CanvasConfigService>,
     pub ws_broadcast: broadcast::Sender<TileVersionEvent>,
     pub websocket_rate_limiter: Option<Arc<RateLimiter>>,
     pub active_websocket_connections: Arc<AtomicUsize>,
@@ -95,6 +97,7 @@ impl AppState {
         let admin_service = Self::create_admin_service(&config, &db_pool);
         let ban_service = Self::create_ban_service(&config, &db_pool);
         let world_service = Self::create_world_service(&config, &db_pool);
+        let canvas_config_service = Self::create_canvas_config_service(&config, &db_pool);
 
         let websocket_rate_limiter = if config.rate_limit.enabled {
             Some(create_websocket_rate_limiter(&config.rate_limit))
@@ -112,6 +115,7 @@ impl AppState {
             admin_service,
             ban_service,
             world_service,
+            canvas_config_service,
             ws_broadcast,
             websocket_rate_limiter,
             active_websocket_connections: Arc::new(AtomicUsize::new(0)),
@@ -293,6 +297,17 @@ impl AppState {
         Arc::new(WorldService::new(world_store_port))
     }
 
+    fn create_canvas_config_service(config: &Config, db_pool: &PgPool) -> Arc<CanvasConfigService> {
+        let world_store_port: Arc<dyn WorldStorePort> = Arc::new(PostgresWorldStoreAdapter::new(
+            db_pool.clone(),
+            config.db.query_timeout_secs,
+        ));
+        Arc::new(CanvasConfigService::new(
+            world_store_port,
+            Arc::new(config.color_palette.clone()),
+        ))
+    }
+
     pub fn db_pool(&self) -> &PgPool {
         &self.db_pool
     }
@@ -347,6 +362,7 @@ impl AppState {
             admin_service,
             self.ban_service,
             self.world_service,
+            self.canvas_config_service,
             credit_store_port,
             self.ws_broadcast,
             self.websocket_rate_limiter,

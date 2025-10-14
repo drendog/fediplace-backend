@@ -6,7 +6,13 @@ use axum::{
 use axum_login::AuthSession;
 use uuid::Uuid;
 
-use domain::world::WorldId;
+#[cfg(feature = "docs")]
+use utoipa::ToSchema;
+
+use domain::{
+    color::RgbColor,
+    world::{World, WorldId},
+};
 use fedi_wplace_application::{error::AppError, world::service::WorldService};
 
 use crate::{
@@ -16,11 +22,29 @@ use crate::{
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
+pub struct PaletteEntry {
+    pub id: u8,
+    pub color: RgbColor,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
+pub struct SpecialColorEntry {
+    pub id: u8,
+    pub purpose: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 pub struct WorldResponse {
     pub id: Uuid,
     pub name: String,
     pub created_at: String,
     pub updated_at: String,
+    pub tile_size: usize,
+    pub pixel_size: usize,
+    pub regular_colors: Vec<PaletteEntry>,
+    pub special_colors: Vec<SpecialColorEntry>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -29,6 +53,55 @@ pub struct CreateWorldRequest {
     pub name: String,
 }
 
+fn build_world_response(world: World, state: &AppState) -> WorldResponse {
+    // TODO: world specific palettes
+    let regular_colors: Vec<PaletteEntry> = state
+        .config
+        .color_palette
+        .colors
+        .iter()
+        .enumerate()
+        .map(|(index, color)| PaletteEntry {
+            id: u8::try_from(index).unwrap_or(u8::MAX),
+            color: *color,
+        })
+        .collect();
+
+    let special_colors: Vec<SpecialColorEntry> = state
+        .config
+        .color_palette
+        .get_special_colors_with_ids()
+        .into_iter()
+        .map(|(id, purpose)| SpecialColorEntry {
+            id,
+            purpose: purpose.clone(),
+        })
+        .collect();
+
+    WorldResponse {
+        id: *world.id.as_uuid(),
+        name: world.name,
+        created_at: world.created_at.to_string(),
+        updated_at: world.updated_at.to_string(),
+        tile_size: state.config.tiles.tile_size,
+        pixel_size: state.config.tiles.pixel_size,
+        regular_colors,
+        special_colors,
+    }
+}
+
+#[cfg_attr(
+    feature = "docs",
+    utoipa::path(
+        get,
+        path = "/worlds",
+        responses(
+            (status = 200, description = "List of all worlds with their configuration", body = Vec<WorldResponse>),
+            (status = 500, description = "Internal server error")
+        ),
+        tag = "worlds"
+    )
+)]
 pub async fn list_worlds(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<WorldResponse>>, HttpError> {
@@ -37,17 +110,28 @@ pub async fn list_worlds(
 
     let response: Vec<WorldResponse> = worlds
         .into_iter()
-        .map(|world| WorldResponse {
-            id: *world.id.as_uuid(),
-            name: world.name,
-            created_at: world.created_at.to_string(),
-            updated_at: world.updated_at.to_string(),
-        })
+        .map(|world| build_world_response(world, &state))
         .collect();
 
     Ok(Json(response))
 }
 
+#[cfg_attr(
+    feature = "docs",
+    utoipa::path(
+        get,
+        path = "/worlds/{world_id}",
+        params(
+            ("world_id" = Uuid, Path, description = "World UUID")
+        ),
+        responses(
+            (status = 200, description = "World configuration retrieved successfully", body = WorldResponse),
+            (status = 404, description = "World not found"),
+            (status = 500, description = "Internal server error")
+        ),
+        tag = "worlds"
+    )
+)]
 pub async fn get_world_by_id(
     Path(world_id): Path<Uuid>,
     State(state): State<AppState>,
@@ -63,14 +147,25 @@ pub async fn get_world_by_id(
             message: "World not found".to_string(),
         }))?;
 
-    Ok(Json(WorldResponse {
-        id: *world.id.as_uuid(),
-        name: world.name,
-        created_at: world.created_at.to_string(),
-        updated_at: world.updated_at.to_string(),
-    }))
+    Ok(Json(build_world_response(world, &state)))
 }
 
+#[cfg_attr(
+    feature = "docs",
+    utoipa::path(
+        get,
+        path = "/worlds/by-name/{name}",
+        params(
+            ("name" = String, Path, description = "World name")
+        ),
+        responses(
+            (status = 200, description = "World configuration retrieved successfully", body = WorldResponse),
+            (status = 404, description = "World not found"),
+            (status = 500, description = "Internal server error")
+        ),
+        tag = "worlds"
+    )
+)]
 pub async fn get_world_by_name(
     Path(name): Path<String>,
     State(state): State<AppState>,
@@ -85,14 +180,24 @@ pub async fn get_world_by_name(
             message: "World not found".to_string(),
         }))?;
 
-    Ok(Json(WorldResponse {
-        id: *world.id.as_uuid(),
-        name: world.name,
-        created_at: world.created_at.to_string(),
-        updated_at: world.updated_at.to_string(),
-    }))
+    Ok(Json(build_world_response(world, &state)))
 }
 
+#[cfg_attr(
+    feature = "docs",
+    utoipa::path(
+        post,
+        path = "/worlds",
+        request_body = CreateWorldRequest,
+        responses(
+            (status = 201, description = "World created successfully", body = WorldResponse),
+            (status = 401, description = "Not authenticated"),
+            (status = 403, description = "Not authorized (admin only)"),
+            (status = 500, description = "Internal server error")
+        ),
+        tag = "worlds"
+    )
+)]
 pub async fn create_world(
     State(state): State<AppState>,
     auth_session: AuthSession<AuthBackend>,
@@ -114,11 +219,6 @@ pub async fn create_world(
 
     Ok((
         StatusCode::CREATED,
-        Json(WorldResponse {
-            id: *world.id.as_uuid(),
-            name: world.name,
-            created_at: world.created_at.to_string(),
-            updated_at: world.updated_at.to_string(),
-        }),
+        Json(build_world_response(world, &state)),
     ))
 }

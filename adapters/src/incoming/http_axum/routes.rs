@@ -25,8 +25,8 @@ use crate::{
                 update_username_handler, verify_email_handler,
             },
             ban::{ban_user, get_user_ban_status, list_active_bans, unban_user},
+            canvas::get_canvas_config,
             health::health_check,
-            palette::get_palette,
             pixel_info::get_pixel_info,
             tiles::{paint_pixels_batch, serve_tile, serve_tile_head},
             worlds::{create_world, get_world_by_id, get_world_by_name, list_worlds},
@@ -73,7 +73,7 @@ pub async fn build_application_router(
 
 fn build_core_routes() -> Router<AppState> {
     let router = Router::new()
-        .route("/palette", get(get_palette))
+        .route("/canvas/config", get(get_canvas_config))
         .route("/live", get(websocket_handler));
 
     #[cfg(feature = "docs")]
