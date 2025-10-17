@@ -2,7 +2,7 @@ use crossbeam_queue::ArrayQueue;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI16, AtomicU64, Ordering};
 #[cfg(feature = "docs")]
 use utoipa::ToSchema;
 
@@ -11,7 +11,7 @@ use crate::coords::{PixelCoord, TileCoord};
 use crate::error::{DomainError, DomainResult};
 
 pub struct PaletteBufferPool {
-    buffers: Arc<ArrayQueue<Vec<u8>>>,
+    buffers: Arc<ArrayQueue<Vec<i16>>>,
     buffer_size_pixels: usize,
 }
 
@@ -26,37 +26,36 @@ impl PaletteBufferPool {
     }
 
     #[must_use]
-    pub fn acquire_buffer(&self) -> Vec<u8> {
+    pub fn acquire_buffer(&self) -> Vec<i16> {
         if let Some(mut buffer) = self.buffers.pop() {
             buffer.clear();
-            buffer.resize(self.buffer_size_pixels, 0);
+            buffer.resize(self.buffer_size_pixels, ColorId::TRANSPARENT);
             return buffer;
         }
-        vec![0; self.buffer_size_pixels]
+        vec![ColorId::TRANSPARENT; self.buffer_size_pixels]
     }
 
-    pub fn release_buffer(&self, buffer: Vec<u8>) {
+    pub fn release_buffer(&self, buffer: Vec<i16>) {
         self.buffers.push(buffer).ok();
     }
 }
 
 pub struct Tile {
-    pub pixels: Box<[AtomicU8]>,
+    pub pixels: Box<[AtomicI16]>,
     pub dirty: AtomicBool,
     pub version: AtomicU64,
     pub dirty_since: AtomicU64,
     pub coord: TileCoord,
     pub tile_size: usize,
-    transparency_color_id: u8,
 }
 
 impl Tile {
     #[must_use]
-    pub fn new(coord: TileCoord, tile_size: usize, transparency_color_id: u8) -> Self {
+    pub fn new(coord: TileCoord, tile_size: usize) -> Self {
         let total_pixels = tile_size * tile_size;
         let mut pixels = Vec::with_capacity(total_pixels);
         for _ in 0..total_pixels {
-            pixels.push(AtomicU8::new(transparency_color_id));
+            pixels.push(AtomicI16::new(ColorId::TRANSPARENT));
         }
 
         Self {
@@ -66,12 +65,7 @@ impl Tile {
             dirty_since: AtomicU64::new(u64::MAX),
             coord,
             tile_size,
-            transparency_color_id,
         }
-    }
-
-    pub fn transparency_color_id(&self) -> u8 {
-        self.transparency_color_id
     }
 
     fn total_pixels(&self) -> usize {
@@ -150,7 +144,7 @@ impl Tile {
         }
     }
 
-    pub fn snapshot_palette(&self, palette_pool: &PaletteBufferPool) -> (u64, Vec<u8>) {
+    pub fn snapshot_palette(&self, palette_pool: &PaletteBufferPool) -> (u64, Vec<i16>) {
         loop {
             let version_before = self.version.load(Ordering::Acquire);
 
@@ -174,7 +168,7 @@ impl Tile {
         }
     }
 
-    pub fn populate_from_palette(&self, palette_data: &[u8]) -> DomainResult<()> {
+    pub fn populate_from_palette(&self, palette_data: &[i16]) -> DomainResult<()> {
         let expected_pixels = self.total_pixels();
         if palette_data.len() != expected_pixels {
             return Err(DomainError::CodecError(format!(

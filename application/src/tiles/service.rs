@@ -1,17 +1,8 @@
-use std::sync::Arc;
-use tracing::{debug, instrument};
-
-use domain::{
-    action::PaintAction,
-    auth::UserId,
-    color::ColorId,
-    coords::{GlobalCoord, PixelCoord, TileCoord},
-    credits::CreditBalance,
-    events::TileVersionEvent,
-    tile::{PaletteBufferPool, Tile, TileVersion},
-    world::WorldId,
+use super::{
+    commands::{PaintingResult, execute_batch_pixel_painting},
+    gateway::TileGateway,
+    util::validate_color_id,
 };
-
 use crate::{
     config::TileSettings,
     error::{AppError, AppResult},
@@ -31,12 +22,18 @@ use crate::{
         },
     },
 };
-
-use super::{
-    commands::{PaintingResult, execute_batch_pixel_painting},
-    gateway::TileGateway,
-    util::validate_color_id,
+use domain::{
+    action::PaintAction,
+    auth::UserId,
+    color::ColorId,
+    coords::{GlobalCoord, PixelCoord, TileCoord},
+    credits::CreditBalance,
+    events::TileVersionEvent,
+    tile::{PaletteBufferPool, Tile, TileVersion},
+    world::WorldId,
 };
+use std::sync::Arc;
+use tracing::{debug, instrument};
 
 pub type PaletteColorLookup = super::util::PaletteColorLookup;
 
@@ -149,7 +146,7 @@ impl TileService {
 
         for (pixel_coord, color_id) in pixels {
             pixel_coord.validate_bounds(self.config.tile_size)?;
-            validate_color_id(color_id.id(), &self.config.color_palette_config)?;
+            validate_color_id(color_id.id(), &self.config.palette)?;
         }
 
         #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]

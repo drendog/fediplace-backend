@@ -1,3 +1,4 @@
+use crate::color::{ColorId, HexColor};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -42,5 +43,28 @@ impl World {
             created_at: now,
             updated_at: now,
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PaletteColor {
+    pub id: Uuid,
+    pub world_id: WorldId,
+    pub palette_index: i16,
+    pub hex_color: HexColor,
+}
+
+impl PaletteColor {
+    pub fn new(id: Uuid, world_id: WorldId, palette_index: i16, hex_color: HexColor) -> Self {
+        Self {
+            id,
+            world_id,
+            palette_index,
+            hex_color,
+        }
+    }
+
+    pub fn color_id(&self) -> ColorId {
+        ColorId::new(self.palette_index)
     }
 }

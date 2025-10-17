@@ -4,6 +4,7 @@ use domain::{
     world::WorldId,
 };
 use sqlx::{PgPool, types::time::OffsetDateTime};
+use std::collections::HashMap;
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -43,11 +44,30 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
         }
 
         let world_uuid = world_id.as_uuid();
+
+        let palette_map = self.executor.execute_with_timeout(
+            || {
+                sqlx::query!(
+                    r#"
+                    SELECT palette_index, id FROM palette_colors
+                    WHERE world_id = $1
+                    "#,
+                    world_uuid
+                )
+                .fetch_all(&self.pool)
+            },
+            "Failed to fetch palette color mappings",
+        )
+        .await?
+        .into_iter()
+        .map(|row| (row.palette_index, row.id))
+        .collect::<HashMap<i16, Uuid>>();
+
         let mut world_ids: Vec<Uuid> = Vec::with_capacity(actions.len());
         let mut user_ids: Vec<Uuid> = Vec::with_capacity(actions.len());
         let mut global_xs: Vec<i32> = Vec::with_capacity(actions.len());
         let mut global_ys: Vec<i32> = Vec::with_capacity(actions.len());
-        let mut color_ids: Vec<i16> = Vec::with_capacity(actions.len());
+        let mut color_ids: Vec<Option<Uuid>> = Vec::with_capacity(actions.len());
         let mut timestamps: Vec<OffsetDateTime> = Vec::with_capacity(actions.len());
 
         for action in actions {
@@ -55,7 +75,14 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
             user_ids.push(*action.user_id.as_uuid());
             global_xs.push(action.global_coord.x);
             global_ys.push(action.global_coord.y);
-            color_ids.push(i16::from(action.color_id.0));
+
+            let color_uuid = if action.color_id.is_transparent() {
+                None
+            } else {
+                palette_map.get(&action.color_id.id()).copied()
+            };
+
+            color_ids.push(color_uuid);
             timestamps.push(action.timestamp);
         }
 
@@ -64,7 +91,7 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
                 sqlx::query!(
                     r#"
                     INSERT INTO pixel_history (world_id, user_id, global_x, global_y, color_id, created_at)
-                    SELECT * FROM UNNEST($1::UUID[], $2::UUID[], $3::INTEGER[], $4::INTEGER[], $5::SMALLINT[], $6::TIMESTAMPTZ[])
+                    SELECT * FROM UNNEST($1::UUID[], $2::UUID[], $3::INTEGER[], $4::INTEGER[], $5::UUID[], $6::TIMESTAMPTZ[])
                     ON CONFLICT (world_id, global_x, global_y)
                     DO UPDATE SET
                         user_id = EXCLUDED.user_id,
@@ -75,7 +102,7 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
                     &user_ids[..],
                     &global_xs[..],
                     &global_ys[..],
-                    &color_ids[..],
+                    &color_ids as &[Option<Uuid>],
                     &timestamps[..]
                 )
                 .execute(&self.pool)
@@ -112,10 +139,11 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
                         u.username,
                         ph.global_x,
                         ph.global_y,
-                        ph.color_id,
+                        COALESCE(pc.palette_index, -1) as "palette_index!",
                         ph.created_at
                     FROM pixel_history ph
                     JOIN users u ON ph.user_id = u.id
+                    LEFT JOIN palette_colors pc ON ph.color_id = pc.id
                     WHERE ph.world_id = $1
                       AND ph.global_x >= $2 AND ph.global_x <= $3
                       AND ph.global_y >= $4 AND ph.global_y <= $5
@@ -147,7 +175,7 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
                     username: row.username,
                     pixel_x,
                     pixel_y,
-                    color_id: row.color_id as u8,
+                    color_id: row.palette_index as i16,
                     timestamp: row.created_at,
                 }
             })
@@ -167,7 +195,7 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
         &self,
         world_id: &WorldId,
         coord: TileCoord,
-    ) -> AppResult<Vec<(usize, usize, u8)>> {
+    ) -> AppResult<Vec<(usize, usize, i16)>> {
         let world_uuid = world_id.as_uuid();
         let tile_size = self.tile_size as i32;
         let min_x = coord.x * tile_size;
@@ -182,13 +210,14 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
                     sqlx::query!(
                         r#"
                     SELECT
-                        global_x,
-                        global_y,
-                        color_id
-                    FROM pixel_history
-                    WHERE world_id = $1
-                      AND global_x >= $2 AND global_x <= $3
-                      AND global_y >= $4 AND global_y <= $5
+                        ph.global_x,
+                        ph.global_y,
+                        COALESCE(pc.palette_index, -1) as "palette_index!"
+                    FROM pixel_history ph
+                    LEFT JOIN palette_colors pc ON ph.color_id = pc.id
+                    WHERE ph.world_id = $1
+                      AND ph.global_x >= $2 AND ph.global_x <= $3
+                      AND ph.global_y >= $4 AND ph.global_y <= $5
                     "#,
                         world_uuid,
                         min_x,
@@ -205,12 +234,12 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
             )
             .await?;
 
-        let current_state: Vec<(usize, usize, u8)> = pixels
+        let current_state: Vec<(usize, usize, i16)> = pixels
             .into_iter()
             .map(|row| {
                 let pixel_x = (row.global_x - min_x) as usize;
                 let pixel_y = (row.global_y - min_y) as usize;
-                (pixel_x, pixel_y, row.color_id as u8)
+                (pixel_x, pixel_y, row.palette_index as i16)
             })
             .collect();
 
@@ -272,10 +301,11 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
                     SELECT
                         ph.user_id,
                         u.username,
-                        ph.color_id,
+                        COALESCE(pc.palette_index, -1) as "palette_index!",
                         ph.created_at
                     FROM pixel_history ph
                     JOIN users u ON ph.user_id = u.id
+                    LEFT JOIN palette_colors pc ON ph.color_id = pc.id
                     WHERE ph.world_id = $1 AND ph.global_x = $2 AND ph.global_y = $3
                     "#,
                         world_uuid,
@@ -294,7 +324,7 @@ impl PixelHistoryStorePort for PostgresPixelHistoryStoreAdapter {
         let result = pixel_info.map(|row| PixelInfo {
             user_id: row.user_id,
             username: row.username,
-            color_id: row.color_id as u8,
+            color_id: row.palette_index as i16,
             timestamp: row.created_at,
         });
 

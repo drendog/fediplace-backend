@@ -3,7 +3,7 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::sync::{Arc, atomic::AtomicUsize};
 use tokio::sync::broadcast;
 
-use domain::{events::TileVersionEvent, tile::PaletteBufferPool};
+use domain::{color::RgbColor, events::TileVersionEvent, tile::PaletteBufferPool};
 use fedi_wplace_adapters::shared::app_state::AppState as AdaptersAppState;
 use fedi_wplace_adapters::{
     incoming::{
@@ -79,12 +79,17 @@ impl AppState {
     pub async fn new(config: Config) -> Result<Self, AppError> {
         let config = Arc::new(config);
 
-        let (palette_color_lookup, palette_buffer_pool) = Self::create_palette_components(&config);
         let (db_pool, redis_pool) = Self::create_database_connections(&config).await?;
+
+        let default_palette = Self::load_default_palette(&config, &db_pool).await?;
+        let (palette_color_lookup, palette_buffer_pool) =
+            Self::create_palette_components(&config, &default_palette);
+
         let (ws_broadcast, _) = broadcast::channel(config.websocket.broadcast_buffer_size);
 
         let tile_service = Self::create_tile_service(
             &config,
+            &default_palette,
             &palette_color_lookup,
             &palette_buffer_pool,
             &db_pool,
@@ -122,12 +127,42 @@ impl AppState {
         })
     }
 
+    async fn load_default_palette(
+        config: &Config,
+        db_pool: &PgPool,
+    ) -> Result<Vec<RgbColor>, AppError> {
+        let world_store_port: Arc<dyn WorldStorePort> = Arc::new(PostgresWorldStoreAdapter::new(
+            db_pool.clone(),
+            config.db.query_timeout_secs,
+        ));
+
+        let default_world =
+            world_store_port
+                .get_default_world()
+                .await?
+                .ok_or_else(|| AppError::ConfigError {
+                    message: "No default world found in database".to_string(),
+                })?;
+
+        let palette_colors = world_store_port
+            .get_palette_colors(&default_world.id)
+            .await?;
+
+        let mut palette_vec = Vec::new();
+        for palette_color in palette_colors {
+            if let Some(rgba_u32) = palette_color.hex_color.to_rgba_u32() {
+                palette_vec.push(RgbColor::from_rgba_u32(rgba_u32));
+            }
+        }
+
+        Ok(palette_vec)
+    }
+
     fn create_palette_components(
         config: &Config,
+        palette: &[RgbColor],
     ) -> (Arc<PaletteColorLookup>, Arc<PaletteBufferPool>) {
-        let palette_color_lookup = Arc::new(PaletteColorLookup::from_color_palette(
-            &config.color_palette.colors,
-        ));
+        let palette_color_lookup = Arc::new(PaletteColorLookup::from_color_palette(palette));
         let palette_buffer_pool = Arc::new(PaletteBufferPool::new(
             config.tiles.tile_size,
             config.tiles.buffer_pool_max_size,
@@ -156,6 +191,7 @@ impl AppState {
 
     fn create_tile_service(
         config: &Config,
+        palette: &[RgbColor],
         palette_color_lookup: &Arc<PaletteColorLookup>,
         palette_buffer_pool: &Arc<PaletteBufferPool>,
         db_pool: &PgPool,
@@ -190,12 +226,7 @@ impl AppState {
         let tile_settings = Arc::new(TileSettings {
             tile_size: config.tiles.tile_size,
             pixel_size: config.tiles.pixel_size,
-            palette: config.color_palette.colors.clone().into(),
-            transparency_color_id: config
-                .color_palette
-                .get_transparency_color_id()
-                .unwrap_or(255),
-            color_palette_config: Arc::new(config.color_palette.clone()),
+            palette: palette.to_vec().into(),
         });
 
         let tile_service = TileService::new(
@@ -302,10 +333,7 @@ impl AppState {
             db_pool.clone(),
             config.db.query_timeout_secs,
         ));
-        Arc::new(CanvasConfigService::new(
-            world_store_port,
-            Arc::new(config.color_palette.clone()),
-        ))
+        Arc::new(CanvasConfigService::new(world_store_port))
     }
 
     pub fn db_pool(&self) -> &PgPool {

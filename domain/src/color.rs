@@ -23,11 +23,6 @@ impl RgbColor {
     }
 
     #[must_use]
-    pub fn transparent_rgba_u32() -> u32 {
-        0x0000_0000
-    }
-
-    #[must_use]
     pub fn from_rgba_u32(rgba: u32) -> Self {
         Self {
             r: u8::try_from(rgba & 0xFF).unwrap_or(0),
@@ -35,15 +30,42 @@ impl RgbColor {
             b: u8::try_from((rgba >> 16) & 0xFF).unwrap_or(0),
         }
     }
+}
 
+#[cfg_attr(feature = "docs", derive(ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct HexColor(pub String);
+
+impl HexColor {
     #[must_use]
-    pub fn fully_transparent() -> Self {
-        Self { r: 0, g: 0, b: 0 }
+    pub fn new(hex: String) -> Self {
+        Self(hex)
     }
 
     #[must_use]
-    pub fn transparent() -> Self {
-        Self::fully_transparent()
+    pub fn to_rgba_u32(&self) -> Option<u32> {
+        if !self.0.starts_with('#') || self.0.len() != 9 {
+            return None;
+        }
+
+        let hex_digits = &self.0[1..];
+        u32::from_str_radix(hex_digits, 16).ok().map(|rgba| {
+            let r = (rgba >> 24) & 0xFF;
+            let g = (rgba >> 16) & 0xFF;
+            let b = (rgba >> 8) & 0xFF;
+            let a = rgba & 0xFF;
+            (a << 24) | (b << 16) | (g << 8) | r
+        })
+    }
+
+    #[must_use]
+    pub fn from_rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
+        Self(format!("#{:02X}{:02X}{:02X}{:02X}", r, g, b, a))
+    }
+
+    #[must_use]
+    pub fn is_transparent(&self) -> bool {
+        self.0.ends_with("00")
     }
 }
 
@@ -51,22 +73,34 @@ impl RgbColor {
 #[cfg_attr(
     feature = "docs",
     schema(
-        description = "Color palette ID (0-255) that maps to a predefined RGBA color",
+        description = "Color palette index (-1 for transparent/None, 0-255 for palette colors)",
         example = 0
     )
 )]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ColorId(pub u8);
+pub struct ColorId(pub i16);
 
 impl ColorId {
+    pub const TRANSPARENT: i16 = -1;
+
     #[must_use]
-    pub fn new(id: u8) -> Self {
+    pub fn transparent() -> Self {
+        Self(Self::TRANSPARENT)
+    }
+
+    #[must_use]
+    pub fn new(id: i16) -> Self {
         Self(id)
     }
 
     #[must_use]
-    pub fn id(&self) -> u8 {
+    pub fn id(&self) -> i16 {
         self.0
+    }
+
+    #[must_use]
+    pub fn is_transparent(&self) -> bool {
+        self.0 == Self::TRANSPARENT
     }
 }
 
@@ -76,13 +110,13 @@ impl fmt::Display for ColorId {
     }
 }
 
-impl From<u8> for ColorId {
-    fn from(id: u8) -> Self {
+impl From<i16> for ColorId {
+    fn from(id: i16) -> Self {
         Self(id)
     }
 }
 
-impl From<ColorId> for u8 {
+impl From<ColorId> for i16 {
     fn from(color_id: ColorId) -> Self {
         color_id.0
     }

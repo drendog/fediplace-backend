@@ -1,5 +1,8 @@
 use super::utils::PostgresExecutor;
-use domain::world::{World, WorldId};
+use domain::{
+    color::HexColor,
+    world::{PaletteColor, World, WorldId},
+};
 use fedi_wplace_application::{error::AppResult, ports::outgoing::world_store::WorldStorePort};
 use sqlx::PgPool;
 use tracing::instrument;
@@ -164,5 +167,39 @@ impl WorldStorePort for PostgresWorldStoreAdapter {
             .await?;
 
         Ok(())
+    }
+
+    #[instrument(skip(self))]
+    async fn get_palette_colors(&self, world_id: &WorldId) -> AppResult<Vec<PaletteColor>> {
+        let world_uuid = world_id.as_uuid();
+
+        let rows = self
+            .executor
+            .execute_with_timeout(
+                || {
+                    sqlx::query!(
+                        r#"
+                        SELECT id, world_id, palette_index, hex_color
+                        FROM palette_colors
+                        WHERE world_id = $1
+                        ORDER BY palette_index
+                        "#,
+                        world_uuid
+                    )
+                    .fetch_all(&self.pool)
+                },
+                &format!("Failed to get palette colors for world {}", world_uuid),
+            )
+            .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| PaletteColor {
+                id: r.id,
+                world_id: WorldId::from_uuid(r.world_id),
+                palette_index: r.palette_index,
+                hex_color: HexColor::new(r.hex_color),
+            })
+            .collect())
     }
 }

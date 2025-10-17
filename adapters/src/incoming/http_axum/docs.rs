@@ -24,7 +24,7 @@ use dto::responses::{
     TileImageResponse, UserResponse,
 };
 use handlers::canvas::CanvasConfigResponse;
-use handlers::worlds::{CreateWorldRequest, PaletteEntry, SpecialColorEntry, WorldResponse};
+use handlers::worlds::{CreateWorldRequest, PaletteEntry, WorldResponse};
 use utoipa::OpenApi;
 
 #[derive(OpenApi)]
@@ -67,7 +67,6 @@ use utoipa::OpenApi;
             WorldResponse,
             CreateWorldRequest,
             PaletteEntry,
-            SpecialColorEntry,
             RegisterRequest,
             LoginRequest,
             UpdateUsernameRequest,

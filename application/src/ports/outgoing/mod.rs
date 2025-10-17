@@ -4,7 +4,6 @@ pub mod credit_store;
 pub mod email_sender;
 pub mod events;
 pub mod image_codec;
-pub mod palette_compression;
 pub mod password_hasher;
 pub mod pixel_history_store;
 pub mod subscription_port;

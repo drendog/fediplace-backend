@@ -1,9 +1,7 @@
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 
 use crate::error::{AppError, AppResult};
-use domain::color::RgbColor;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -17,7 +15,6 @@ pub struct Config {
     pub credits: CreditConfig,
     pub logging: LoggingConfig,
     pub environment: EnvironmentConfig,
-    pub color_palette: ColorPaletteConfig,
     pub auth: AuthConfig,
 }
 
@@ -220,119 +217,6 @@ pub enum LogFormat {
     Pretty,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ColorPaletteConfig {
-    pub colors: Vec<RgbColor>,
-    #[serde(default)]
-    pub special_colors: Vec<String>,
-}
-
-impl ColorPaletteConfig {
-    #[must_use]
-    pub fn get_color(&self, color_id: u8) -> Option<&RgbColor> {
-        self.colors.get(color_id as usize)
-    }
-
-    pub fn get_color_or_special(&self, color_id: u8) -> Result<Option<RgbColor>, String> {
-        let regular_color_count = u8::try_from(self.colors.len())
-            .map_err(|_| "Too many colors in palette".to_string())?;
-
-        if color_id < regular_color_count {
-            Ok(self.colors.get(color_id as usize).copied())
-        } else {
-            let special_index = (color_id - regular_color_count) as usize;
-            if let Some(purpose) = self.special_colors.get(special_index) {
-                match purpose.as_str() {
-                    "transparency" => Ok(None),
-                    _ => Err(format!(
-                        "Special color '{purpose}' (ID {color_id}) cannot be used for painting"
-                    )),
-                }
-            } else {
-                Err(format!("Invalid color ID: {color_id}"))
-            }
-        }
-    }
-
-    #[must_use]
-    pub fn find_color_id(&self, color: &RgbColor) -> Option<u8> {
-        self.colors
-            .iter()
-            .position(|c| c == color)
-            .and_then(|index| u8::try_from(index).ok())
-    }
-
-    #[must_use]
-    pub fn get_special_colors_with_ids(&self) -> Vec<(u8, &String)> {
-        #[allow(clippy::cast_possible_truncation)]
-        let regular_color_count = self.colors.len() as u8;
-        self.special_colors
-            .iter()
-            .enumerate()
-            .map(|(index, purpose)| {
-                #[allow(clippy::cast_possible_truncation)]
-                let id = regular_color_count + index as u8;
-                (id, purpose)
-            })
-            .collect()
-    }
-
-    #[must_use]
-    pub fn get_special_color_ids(&self) -> HashSet<u8> {
-        let regular_color_count = u8::try_from(self.colors.len()).unwrap_or(u8::MAX);
-        (0..self.special_colors.len())
-            .map(|index| regular_color_count.saturating_add(u8::try_from(index).unwrap_or(u8::MAX)))
-            .collect()
-    }
-
-    #[must_use]
-    pub fn get_transparency_color_id(&self) -> Option<u8> {
-        let regular_color_count = u8::try_from(self.colors.len()).unwrap_or(u8::MAX);
-        self.special_colors
-            .iter()
-            .position(|purpose| purpose == "transparency")
-            .map(|index| regular_color_count.saturating_add(u8::try_from(index).unwrap_or(u8::MAX)))
-    }
-
-    pub fn validate(&self) -> AppResult<()> {
-        if self.colors.is_empty() {
-            return Err(AppError::ConfigError {
-                message: "Color palette cannot be empty".to_string(),
-            });
-        }
-
-        if self.colors.len() > 256 {
-            return Err(AppError::ConfigError {
-                message: "Color palette cannot have more than 256 colors".to_string(),
-            });
-        }
-
-        let regular_color_count = self.colors.len();
-        let total_colors = regular_color_count + self.special_colors.len();
-
-        if total_colors > 256 {
-            return Err(AppError::ConfigError {
-                message: format!(
-                    "Total colors ({} regular + {} special) exceeds maximum of 256",
-                    regular_color_count,
-                    self.special_colors.len()
-                ),
-            });
-        }
-
-        let mut seen_purposes = HashSet::new();
-        for purpose in &self.special_colors {
-            if !seen_purposes.insert(purpose) {
-                return Err(AppError::ConfigError {
-                    message: format!("Duplicate special color purpose: '{purpose}'"),
-                });
-            }
-        }
-
-        Ok(())
-    }
-}
-
 impl Default for EmailConfig {
     fn default() -> Self {
         Self {
@@ -380,32 +264,6 @@ impl Default for AuthConfig {
             google_redirect_url: None,
             email: EmailConfig::default(),
             argon2: Argon2Config::default(),
-        }
-    }
-}
-
-impl Default for ColorPaletteConfig {
-    fn default() -> Self {
-        Self {
-            colors: vec![
-                RgbColor::new(255, 255, 255),
-                RgbColor::new(0, 0, 0),
-                RgbColor::new(255, 0, 0),
-                RgbColor::new(0, 255, 0),
-                RgbColor::new(0, 0, 255),
-                RgbColor::new(255, 255, 0),
-                RgbColor::new(255, 0, 255),
-                RgbColor::new(0, 255, 255),
-                RgbColor::new(128, 128, 128),
-                RgbColor::new(255, 165, 0),
-                RgbColor::new(128, 0, 128),
-                RgbColor::new(0, 128, 0),
-                RgbColor::new(0, 0, 128),
-                RgbColor::new(128, 0, 0),
-                RgbColor::new(255, 192, 203),
-                RgbColor::new(165, 42, 42),
-            ],
-            special_colors: vec!["transparency".to_string()],
         }
     }
 }
@@ -473,7 +331,6 @@ impl Default for Config {
             environment: EnvironmentConfig {
                 env: "development".to_string(),
             },
-            color_palette: ColorPaletteConfig::default(),
             auth: AuthConfig::default(),
         }
     }
@@ -594,8 +451,6 @@ impl Config {
                 });
             }
         }
-
-        self.color_palette.validate()?;
 
         if self.credits.max_charges <= 0 {
             return Err(AppError::ConfigError {

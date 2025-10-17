@@ -101,7 +101,7 @@ impl TileCachePort for RedisTileCacheAdapter {
         world_id: &WorldId,
         coord: TileCoord,
         version: u64,
-    ) -> AppResult<Option<Vec<u8>>> {
+    ) -> AppResult<Option<Vec<i16>>> {
         let mut conn = self.get_redis_connection().await?;
         let palette_key =
             self.redis_keys
@@ -110,7 +110,17 @@ impl TileCachePort for RedisTileCacheAdapter {
         match conn.get::<_, Vec<u8>>(&palette_key).await {
             Ok(palette_bytes) if !palette_bytes.is_empty() => {
                 debug!("Palette cache hit for tile {} v{}", coord, version);
-                Ok(Some(palette_bytes))
+                let palette_i16 = palette_bytes
+                    .chunks_exact(2)
+                    .filter_map(|chunk| {
+                        if let [a, b] = chunk {
+                            Some(i16::from_le_bytes([*a, *b]))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                Ok(Some(palette_i16))
             }
             _ => {
                 debug!("Palette cache miss for tile {} v{}", coord, version);
@@ -124,15 +134,17 @@ impl TileCachePort for RedisTileCacheAdapter {
         world_id: &WorldId,
         coord: TileCoord,
         version: u64,
-        data: &[u8],
+        data: &[i16],
     ) -> AppResult<()> {
         let mut conn = self.get_redis_connection().await?;
         let palette_key =
             self.redis_keys
                 .palette_key(world_id.as_uuid(), coord.x, coord.y, version);
 
+        let bytes: Vec<u8> = data.iter().flat_map(|&val| val.to_le_bytes()).collect();
+
         let _: () = conn
-            .set_ex(&palette_key, data, self.ttls.rgba)
+            .set_ex(&palette_key, bytes, self.ttls.rgba)
             .await
             .map_err(|e| AppError::CacheError {
                 message: format!("Failed to store palette data for tile {}: {}", coord, e),
@@ -272,14 +284,15 @@ impl TileCachePort for RedisTileCacheAdapter {
         world_id: &WorldId,
         coord: TileCoord,
         version: u64,
-        data: &[u8],
+        data: &[i16],
     ) {
         if let Ok(mut conn) = self.get_redis_connection().await {
             let palette_key =
                 self.redis_keys
                     .palette_key(world_id.as_uuid(), coord.x, coord.y, version);
+            let bytes: Vec<u8> = data.iter().flat_map(|&val| val.to_le_bytes()).collect();
             if let Err(e) = conn
-                .set_ex::<_, _, ()>(&palette_key, data, self.ttls.rgba)
+                .set_ex::<_, _, ()>(&palette_key, bytes, self.ttls.rgba)
                 .await
             {
                 warn!(

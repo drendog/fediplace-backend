@@ -1,9 +1,3 @@
-use std::{
-    sync::{Arc, atomic::Ordering},
-    time::Duration,
-};
-use tracing::debug;
-
 use crate::{
     config::TileSettings,
     error::{AppError, AppResult},
@@ -17,6 +11,11 @@ use domain::{
     tile::{PaletteBufferPool, Tile, TileVersion},
     world::WorldId,
 };
+use std::{
+    sync::{Arc, atomic::Ordering},
+    time::Duration,
+};
+use tracing::debug;
 
 use super::util::{PaletteColorLookup, palette_to_rgba_pixels, populate_tile_from_rgba};
 
@@ -149,12 +148,7 @@ impl TileGateway {
             .await?
         {
             let rgba_pixels = palette_to_rgba_pixels(&palette_bytes, &self.config.palette);
-            let transparency_id = self.config.transparency_color_id;
-            let tile = Arc::new(Tile::new(
-                tile_coord,
-                self.config.tile_size,
-                transparency_id,
-            ));
+            let tile = Arc::new(Tile::new(tile_coord, self.config.tile_size));
             populate_tile_from_rgba(&tile, &rgba_pixels, &self.palette_color_lookup)?;
             tile.mark_clean(authoritative_version_lookup.version);
             return Ok(tile);
@@ -165,12 +159,7 @@ impl TileGateway {
             .get_current_tile_state(world_id, tile_coord)
             .await?;
         let tile = if pixel_state.is_empty() {
-            let transparency_id = self.config.transparency_color_id;
-            Arc::new(Tile::new(
-                tile_coord,
-                self.config.tile_size,
-                transparency_id,
-            ))
+            Arc::new(Tile::new(tile_coord, self.config.tile_size))
         } else {
             self.reconstruct_tile_from_pixel_history(tile_coord, &pixel_state)
         };
@@ -276,10 +265,9 @@ impl TileGateway {
     fn reconstruct_tile_from_pixel_history(
         &self,
         coord: TileCoord,
-        pixel_state: &[(usize, usize, u8)],
+        pixel_state: &[(usize, usize, i16)],
     ) -> Arc<Tile> {
-        let transparency_id = self.config.transparency_color_id;
-        let tile = Arc::new(Tile::new(coord, self.config.tile_size, transparency_id));
+        let tile = Arc::new(Tile::new(coord, self.config.tile_size));
 
         for &(x, y, color_id) in pixel_state {
             if x < self.config.tile_size && y < self.config.tile_size {
@@ -321,8 +309,7 @@ impl TileGateway {
 
     fn create_empty_tile_data(&self, coord: TileCoord) -> CacheHierarchyResult {
         debug!("Creating empty tile for {}", coord);
-        let transparency_id = self.config.transparency_color_id;
-        let new_tile = Arc::new(Tile::new(coord, self.config.tile_size, transparency_id));
+        let new_tile = Arc::new(Tile::new(coord, self.config.tile_size));
 
         CacheHierarchyResult {
             rgba_pixels: {
@@ -464,7 +451,7 @@ impl TileGateway {
         world_id: &WorldId,
         coord: TileCoord,
         version: u64,
-    ) -> AppResult<Option<Vec<u8>>> {
+    ) -> AppResult<Option<Vec<i16>>> {
         self.cache_port.get_palette(world_id, coord, version).await
     }
 

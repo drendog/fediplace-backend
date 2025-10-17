@@ -11,13 +11,13 @@ pub trait TileCachePort: Send + Sync {
         world_id: &WorldId,
         coord: TileCoord,
         version: u64,
-    ) -> AppResult<Option<Vec<u8>>>;
+    ) -> AppResult<Option<Vec<i16>>>;
     async fn store_palette(
         &self,
         world_id: &WorldId,
         coord: TileCoord,
         version: u64,
-        data: &[u8],
+        data: &[i16],
     ) -> AppResult<()>;
 
     async fn get_webp(
@@ -49,7 +49,7 @@ pub trait TileCachePort: Send + Sync {
         world_id: &WorldId,
         coord: TileCoord,
         version: u64,
-        data: &[u8],
+        data: &[i16],
     );
 
     async fn clear_cache(&self, world_id: &WorldId) -> AppResult<()>;

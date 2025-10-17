@@ -9,10 +9,7 @@ use uuid::Uuid;
 #[cfg(feature = "docs")]
 use utoipa::ToSchema;
 
-use domain::{
-    color::RgbColor,
-    world::{World, WorldId},
-};
+use domain::world::{World, WorldId};
 use fedi_wplace_application::{error::AppError, world::service::WorldService};
 
 use crate::{
@@ -23,15 +20,8 @@ use crate::{
 #[derive(serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
 pub struct PaletteEntry {
-    pub id: u8,
-    pub color: RgbColor,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-#[cfg_attr(feature = "docs", derive(utoipa::ToSchema))]
-pub struct SpecialColorEntry {
-    pub id: u8,
-    pub purpose: String,
+    pub id: i16,
+    pub hex_color: String,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -43,8 +33,7 @@ pub struct WorldResponse {
     pub updated_at: String,
     pub tile_size: usize,
     pub pixel_size: usize,
-    pub regular_colors: Vec<PaletteEntry>,
-    pub special_colors: Vec<SpecialColorEntry>,
+    pub colors: Vec<PaletteEntry>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -53,41 +42,26 @@ pub struct CreateWorldRequest {
     pub name: String,
 }
 
-fn build_world_response(world: World, state: &AppState) -> WorldResponse {
-    // TODO: world specific palettes
-    let regular_colors: Vec<PaletteEntry> = state
-        .config
-        .color_palette
-        .colors
-        .iter()
-        .enumerate()
-        .map(|(index, color)| PaletteEntry {
-            id: u8::try_from(index).unwrap_or(u8::MAX),
-            color: *color,
-        })
-        .collect();
+async fn build_world_response(world: World, state: &AppState) -> Result<WorldResponse, AppError> {
+    let palette_colors = state.world_service.get_palette_colors(&world.id).await?;
 
-    let special_colors: Vec<SpecialColorEntry> = state
-        .config
-        .color_palette
-        .get_special_colors_with_ids()
+    let colors: Vec<PaletteEntry> = palette_colors
         .into_iter()
-        .map(|(id, purpose)| SpecialColorEntry {
-            id,
-            purpose: purpose.clone(),
+        .map(|palette_color| PaletteEntry {
+            id: palette_color.palette_index,
+            hex_color: palette_color.hex_color.0,
         })
         .collect();
 
-    WorldResponse {
+    Ok(WorldResponse {
         id: *world.id.as_uuid(),
         name: world.name,
         created_at: world.created_at.to_string(),
         updated_at: world.updated_at.to_string(),
         tile_size: state.config.tiles.tile_size,
         pixel_size: state.config.tiles.pixel_size,
-        regular_colors,
-        special_colors,
-    }
+        colors,
+    })
 }
 
 #[cfg_attr(
@@ -108,10 +82,13 @@ pub async fn list_worlds(
     let world_service: &WorldService = &state.world_service;
     let worlds = world_service.list_worlds().await.map_err(HttpError)?;
 
-    let response: Vec<WorldResponse> = worlds
-        .into_iter()
-        .map(|world| build_world_response(world, &state))
-        .collect();
+    let mut response = Vec::new();
+    for world in worlds {
+        let world_response = build_world_response(world, &state)
+            .await
+            .map_err(HttpError)?;
+        response.push(world_response);
+    }
 
     Ok(Json(response))
 }
@@ -147,7 +124,11 @@ pub async fn get_world_by_id(
             message: "World not found".to_string(),
         }))?;
 
-    Ok(Json(build_world_response(world, &state)))
+    let response = build_world_response(world, &state)
+        .await
+        .map_err(HttpError)?;
+
+    Ok(Json(response))
 }
 
 #[cfg_attr(
@@ -180,7 +161,11 @@ pub async fn get_world_by_name(
             message: "World not found".to_string(),
         }))?;
 
-    Ok(Json(build_world_response(world, &state)))
+    let response = build_world_response(world, &state)
+        .await
+        .map_err(HttpError)?;
+
+    Ok(Json(response))
 }
 
 #[cfg_attr(
@@ -217,8 +202,9 @@ pub async fn create_world(
         .await
         .map_err(HttpError)?;
 
-    Ok((
-        StatusCode::CREATED,
-        Json(build_world_response(world, &state)),
-    ))
+    let response = build_world_response(world, &state)
+        .await
+        .map_err(HttpError)?;
+
+    Ok((StatusCode::CREATED, Json(response)))
 }

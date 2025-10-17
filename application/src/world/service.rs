@@ -1,5 +1,5 @@
 use crate::{error::AppResult, ports::outgoing::world_store::DynWorldStorePort};
-use domain::world::{World, WorldId};
+use domain::world::{PaletteColor, World, WorldId};
 
 pub struct WorldService {
     world_store: DynWorldStorePort,
@@ -30,5 +30,9 @@ impl WorldService {
         let world = World::new(name);
         self.world_store.create_world(&world).await?;
         Ok(world)
+    }
+
+    pub async fn get_palette_colors(&self, world_id: &WorldId) -> AppResult<Vec<PaletteColor>> {
+        self.world_store.get_palette_colors(world_id).await
     }
 }
