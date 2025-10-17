@@ -1,11 +1,13 @@
 use std::{collections::HashMap, sync::atomic::Ordering};
 
 use crate::error::{AppError, AppResult};
-use crate::infrastructure_config::ColorPaletteConfig;
+use domain::color::ColorId;
 use domain::{
     color::{Color, RgbColor},
     tile::Tile,
 };
+
+const TRANSPARENT_COLOR: u32 = 0;
 
 #[derive(Debug, Clone)]
 pub struct PaletteColorLookup {
@@ -34,13 +36,17 @@ impl PaletteColorLookup {
     }
 }
 
-pub fn palette_to_rgba_pixels(palette_bytes: &[u8], color_palette: &[RgbColor]) -> Vec<u32> {
-    let mut rgba_pixels = Vec::with_capacity(palette_bytes.len());
-    for &palette_id in palette_bytes {
-        if let Some(color) = color_palette.get(palette_id as usize) {
+pub fn palette_to_rgba_pixels(palette_ids: &[i16], color_palette: &[RgbColor]) -> Vec<u32> {
+    let mut rgba_pixels = Vec::with_capacity(palette_ids.len());
+    for &palette_id in palette_ids {
+        let color_id = ColorId::new(palette_id);
+
+        if color_id.is_transparent() {
+            rgba_pixels.push(TRANSPARENT_COLOR);
+        } else if let Some(color) = color_palette.get(color_id.id() as usize) {
             rgba_pixels.push(color.to_rgba_u32());
         } else {
-            rgba_pixels.push(Color::transparent_rgba_u32());
+            rgba_pixels.push(TRANSPARENT_COLOR);
         }
     }
     rgba_pixels
@@ -63,88 +69,49 @@ pub fn populate_tile_from_rgba(
     }
 
     for (pixel, &rgba_value) in tile.pixels.iter().zip(rgba_pixel_data.iter()) {
-        if rgba_value == Color::transparent_rgba_u32() {
-            pixel.store(tile.transparency_color_id(), Ordering::Relaxed);
+        let palette_id = if rgba_value == TRANSPARENT_COLOR {
+            ColorId::TRANSPARENT
         } else {
             let color = Color::from_rgba_u32(rgba_value);
-            let palette_id = palette_lookup.find_color_id(color).ok_or_else(|| {
+            i16::from(palette_lookup.find_color_id(color).ok_or_else(|| {
                 AppError::InvalidColorFormat {
                     message: format!(
                         "Color not found in palette: ({}, {}, {})",
                         color.r, color.g, color.b
                     ),
                 }
-            })?;
-            pixel.store(palette_id, Ordering::Relaxed);
-        }
+            })?)
+        };
+        pixel.store(palette_id, Ordering::Relaxed);
     }
 
     Ok(())
 }
 
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct ColorRules {
-    max_regular_id: u8,
-    transparency_id: Option<u8>,
-    total_valid_ids: u8,
-}
+pub fn validate_color_id(id: i16, palette: &[RgbColor]) -> AppResult<()> {
+    use domain::color::ColorId;
 
-#[allow(dead_code)]
-impl ColorRules {
-    pub fn new(palette_cfg: &ColorPaletteConfig) -> Self {
-        #[allow(clippy::cast_possible_truncation)]
-        let regular_color_count = palette_cfg.colors.len() as u8;
-        let max_regular_id = regular_color_count.saturating_sub(1);
-        let transparency_id = palette_cfg.get_transparency_color_id();
-
-        #[allow(clippy::cast_possible_truncation)]
-        let total_valid_ids = regular_color_count + palette_cfg.special_colors.len() as u8;
-
-        Self {
-            max_regular_id,
-            transparency_id,
-            total_valid_ids,
-        }
+    if id == ColorId::TRANSPARENT {
+        return Ok(());
     }
 
-    pub fn is_valid_for_painting(&self, color_id: u8) -> bool {
-        color_id < self.total_valid_ids
-            && (color_id <= self.max_regular_id || Some(color_id) == self.transparency_id)
-    }
-
-    pub fn is_in_bounds(&self, color_id: u8) -> bool {
-        color_id < self.total_valid_ids
-    }
-}
-
-pub fn validate_color_id(id: u8, palette_cfg: &ColorPaletteConfig) -> AppResult<()> {
-    #[allow(clippy::cast_possible_truncation)]
-    let regular_color_count = palette_cfg.colors.len() as u8;
-    #[allow(clippy::cast_possible_truncation)]
-    let total_colors = regular_color_count + palette_cfg.special_colors.len() as u8;
-
-    if id >= total_colors {
+    if id < 0 {
         return Err(AppError::InvalidColorFormat {
-            message: format!(
-                "Color ID {} is out of bounds (valid range: 0-{})",
-                id,
-                total_colors.saturating_sub(1)
-            ),
+            message: format!("Color ID {} is invalid (must be -1 or 0-255)", id),
         });
     }
 
-    if id >= regular_color_count {
-        let special_index = (id - regular_color_count) as usize;
-        if let Some(purpose) = palette_cfg.special_colors.get(special_index) {
-            if purpose != "transparency" {
-                return Err(AppError::InvalidColorFormat {
-                    message: format!(
-                        "Special color '{purpose}' (ID {id}) cannot be used for painting"
-                    ),
-                });
-            }
-        }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let color_count = palette.len() as i16;
+
+    if id >= color_count {
+        return Err(AppError::InvalidColorFormat {
+            message: format!(
+                "Color ID {} is out of bounds (valid range: -1 (transparent) or 0-{})",
+                id,
+                color_count.saturating_sub(1)
+            ),
+        });
     }
 
     Ok(())

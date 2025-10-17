@@ -248,7 +248,7 @@ pub struct PixelHistoryEntry {
     #[cfg_attr(feature = "docs", schema(example = 64))]
     pub py: usize,
     #[cfg_attr(feature = "docs", schema(example = 5))]
-    pub color_id: u8,
+    pub color_id: i16,
     #[cfg_attr(feature = "docs", schema(example = "2023-01-01T12:00:00Z"))]
     pub timestamp: String,
 }
@@ -273,7 +273,7 @@ pub struct PixelInfoResponse {
     #[cfg_attr(feature = "docs", schema(example = "johndoe"))]
     pub username: String,
     #[cfg_attr(feature = "docs", schema(example = 5))]
-    pub color_id: u8,
+    pub color_id: i16,
     #[cfg_attr(feature = "docs", schema(example = "2023-01-01T12:00:00Z"))]
     pub timestamp: String,
 }

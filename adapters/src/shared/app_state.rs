@@ -10,15 +10,22 @@ use crate::incoming::http_axum::middleware::rate_limit::RateLimiter;
 use crate::incoming::ws_axum::WsAdapterPolicy;
 
 use domain::events::TileVersionEvent;
-use fedi_wplace_application::ports::incoming::{
-    admin::AdminUseCase,
-    auth::AuthUseCase,
-    ban::BanUseCase,
-    subscriptions::SubscriptionUseCase,
-    tiles::{
-        MetricsQueryUseCase, PaintPixelsUseCase, PixelHistoryQueryUseCase, PixelInfoQueryUseCase,
-        TilesQueryUseCase,
+use fedi_wplace_application::{
+    canvas::service::CanvasConfigService,
+    ports::{
+        incoming::{
+            admin::AdminUseCase,
+            auth::AuthUseCase,
+            ban::BanUseCase,
+            subscriptions::SubscriptionUseCase,
+            tiles::{
+                MetricsQueryUseCase, PaintPixelsUseCase, PixelHistoryQueryUseCase,
+                PixelInfoQueryUseCase, TilesQueryUseCase,
+            },
+        },
+        outgoing::credit_store::DynCreditStorePort,
     },
+    world::service::WorldService,
 };
 
 #[derive(Clone)]
@@ -34,6 +41,9 @@ pub struct AppState {
     pub auth_use_case: Arc<dyn AuthUseCase + Send + Sync>,
     pub admin_use_case: Arc<dyn AdminUseCase + Send + Sync>,
     pub ban_use_case: Arc<dyn BanUseCase + Send + Sync>,
+    pub world_service: Arc<WorldService>,
+    pub canvas_config_service: Arc<CanvasConfigService>,
+    pub credit_store: DynCreditStorePort,
     pub ws_broadcast: broadcast::Sender<TileVersionEvent>,
     pub websocket_rate_limiter: Option<Arc<RateLimiter>>,
     pub active_websocket_connections: Arc<AtomicUsize>,
@@ -53,6 +63,9 @@ impl AppState {
         auth_use_case: Arc<dyn AuthUseCase + Send + Sync>,
         admin_use_case: Arc<dyn AdminUseCase + Send + Sync>,
         ban_use_case: Arc<dyn BanUseCase + Send + Sync>,
+        world_service: Arc<WorldService>,
+        canvas_config_service: Arc<CanvasConfigService>,
+        credit_store: DynCreditStorePort,
         ws_broadcast: broadcast::Sender<TileVersionEvent>,
         websocket_rate_limiter: Option<Arc<RateLimiter>>,
         active_websocket_connections: Arc<AtomicUsize>,
@@ -69,6 +82,9 @@ impl AppState {
             auth_use_case,
             admin_use_case,
             ban_use_case,
+            world_service,
+            canvas_config_service,
+            credit_store,
             ws_broadcast,
             websocket_rate_limiter,
             active_websocket_connections,

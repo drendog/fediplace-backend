@@ -1,7 +1,6 @@
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use domain::auth::UserPublic;
-use domain::credits::{CreditBalance, CreditConfig};
+use domain::{auth::UserPublic, credits::CreditConfig};
 use fedi_wplace_application::error::AppError;
 
 use crate::{incoming::http_axum::dto::responses::UserResponse, shared::app_state::AppState};
@@ -11,16 +10,15 @@ pub async fn build_user_response(
     state: &AppState,
     now: OffsetDateTime,
 ) -> Result<UserResponse, AppError> {
+    let balance = state.credit_store.get_user_credits(&user_public.id).await?;
+
     let credit_config = CreditConfig::new(
         state.config.credits.max_charges,
         state.config.credits.charge_cooldown_seconds,
     );
-    let credit_balance = CreditBalance::new(
-        user_public.available_charges,
-        user_public.charges_updated_at,
-    );
-    let current_charges = credit_balance.calculate_current_balance(now, &credit_config);
-    let seconds_until_next_charge = credit_balance.seconds_until_next_charge(now, &credit_config);
+
+    let current_charges = balance.calculate_current_balance(now, &credit_config);
+    let seconds_until_next_charge = balance.seconds_until_next_charge(now, &credit_config);
 
     let roles = user_public
         .roles

@@ -6,7 +6,7 @@ use std::time::Duration;
 use tokio::time::timeout;
 use tracing::{debug, warn};
 
-use domain::coords::TileCoord;
+use domain::{coords::TileCoord, world::WorldId};
 use fedi_wplace_application::{
     error::{AppError, AppResult},
     ports::outgoing::tile_cache::TileCachePort,
@@ -78,27 +78,49 @@ impl RedisTileCacheAdapter {
 
 #[async_trait::async_trait]
 impl TileCachePort for RedisTileCacheAdapter {
-    async fn get_version(&self, coord: TileCoord) -> AppResult<Option<u64>> {
+    async fn get_version(&self, world_id: &WorldId, coord: TileCoord) -> AppResult<Option<u64>> {
         let mut conn = self.get_redis_connection().await?;
-        let current_key = self.redis_keys.current_key(coord.x, coord.y);
+        let current_key = self
+            .redis_keys
+            .current_key(world_id.as_uuid(), coord.x, coord.y);
 
         match conn.get::<_, u64>(&current_key).await {
             Ok(version) => {
-                debug!("Found version {} in Redis for tile {}", version, coord);
+                debug!(
+                    "Found version {} in Redis for tile {} in world {:?}",
+                    version, coord, world_id
+                );
                 Ok(Some(version))
             }
             Err(_) => Ok(None),
         }
     }
 
-    async fn get_palette(&self, coord: TileCoord, version: u64) -> AppResult<Option<Vec<u8>>> {
+    async fn get_palette(
+        &self,
+        world_id: &WorldId,
+        coord: TileCoord,
+        version: u64,
+    ) -> AppResult<Option<Vec<i16>>> {
         let mut conn = self.get_redis_connection().await?;
-        let palette_key = self.redis_keys.palette_key(coord.x, coord.y, version);
+        let palette_key =
+            self.redis_keys
+                .palette_key(world_id.as_uuid(), coord.x, coord.y, version);
 
         match conn.get::<_, Vec<u8>>(&palette_key).await {
             Ok(palette_bytes) if !palette_bytes.is_empty() => {
                 debug!("Palette cache hit for tile {} v{}", coord, version);
-                Ok(Some(palette_bytes))
+                let palette_i16 = palette_bytes
+                    .chunks_exact(2)
+                    .filter_map(|chunk| {
+                        if let [a, b] = chunk {
+                            Some(i16::from_le_bytes([*a, *b]))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                Ok(Some(palette_i16))
             }
             _ => {
                 debug!("Palette cache miss for tile {} v{}", coord, version);
@@ -107,12 +129,22 @@ impl TileCachePort for RedisTileCacheAdapter {
         }
     }
 
-    async fn store_palette(&self, coord: TileCoord, version: u64, data: &[u8]) -> AppResult<()> {
+    async fn store_palette(
+        &self,
+        world_id: &WorldId,
+        coord: TileCoord,
+        version: u64,
+        data: &[i16],
+    ) -> AppResult<()> {
         let mut conn = self.get_redis_connection().await?;
-        let palette_key = self.redis_keys.palette_key(coord.x, coord.y, version);
+        let palette_key =
+            self.redis_keys
+                .palette_key(world_id.as_uuid(), coord.x, coord.y, version);
+
+        let bytes: Vec<u8> = data.iter().flat_map(|&val| val.to_le_bytes()).collect();
 
         let _: () = conn
-            .set_ex(&palette_key, data, self.ttls.rgba)
+            .set_ex(&palette_key, bytes, self.ttls.rgba)
             .await
             .map_err(|e| AppError::CacheError {
                 message: format!("Failed to store palette data for tile {}: {}", coord, e),
@@ -122,9 +154,16 @@ impl TileCachePort for RedisTileCacheAdapter {
         Ok(())
     }
 
-    async fn get_webp(&self, coord: TileCoord, version: u64) -> AppResult<Option<Vec<u8>>> {
+    async fn get_webp(
+        &self,
+        world_id: &WorldId,
+        coord: TileCoord,
+        version: u64,
+    ) -> AppResult<Option<Vec<u8>>> {
         let mut conn = self.get_redis_connection().await?;
-        let webp_key = self.redis_keys.webp_key(coord.x, coord.y, version);
+        let webp_key = self
+            .redis_keys
+            .webp_key(world_id.as_uuid(), coord.x, coord.y, version);
 
         match conn.get::<_, Vec<u8>>(&webp_key).await {
             Ok(webp_bytes) if !webp_bytes.is_empty() => {
@@ -138,7 +177,13 @@ impl TileCachePort for RedisTileCacheAdapter {
         }
     }
 
-    async fn store_webp(&self, coord: TileCoord, version: u64, data: &[u8]) -> AppResult<()> {
+    async fn store_webp(
+        &self,
+        world_id: &WorldId,
+        coord: TileCoord,
+        version: u64,
+        data: &[u8],
+    ) -> AppResult<()> {
         if data.is_empty() {
             warn!(
                 "Refusing to cache empty WebP data for tile {} v{}",
@@ -148,7 +193,9 @@ impl TileCachePort for RedisTileCacheAdapter {
         }
 
         let mut conn = self.get_redis_connection().await?;
-        let webp_key = self.redis_keys.webp_key(coord.x, coord.y, version);
+        let webp_key = self
+            .redis_keys
+            .webp_key(world_id.as_uuid(), coord.x, coord.y, version);
 
         let _: () = conn
             .set_ex(&webp_key, data, self.ttls.webp)
@@ -166,9 +213,11 @@ impl TileCachePort for RedisTileCacheAdapter {
         Ok(())
     }
 
-    async fn has_missing_sentinel(&self, coord: TileCoord) -> AppResult<bool> {
+    async fn has_missing_sentinel(&self, world_id: &WorldId, coord: TileCoord) -> AppResult<bool> {
         let mut conn = self.get_redis_connection().await?;
-        let missing_sentinel_key = self.redis_keys.missing_sentinel_key(coord.x, coord.y);
+        let missing_sentinel_key =
+            self.redis_keys
+                .missing_sentinel_key(world_id.as_uuid(), coord.x, coord.y);
 
         match conn.get::<_, bool>(&missing_sentinel_key).await {
             Ok(exists) => Ok(exists),
@@ -176,9 +225,11 @@ impl TileCachePort for RedisTileCacheAdapter {
         }
     }
 
-    async fn set_missing_sentinel(&self, coord: TileCoord) -> AppResult<()> {
+    async fn set_missing_sentinel(&self, world_id: &WorldId, coord: TileCoord) -> AppResult<()> {
         let mut conn = self.get_redis_connection().await?;
-        let missing_sentinel_key = self.redis_keys.missing_sentinel_key(coord.x, coord.y);
+        let missing_sentinel_key =
+            self.redis_keys
+                .missing_sentinel_key(world_id.as_uuid(), coord.x, coord.y);
 
         let _: () = conn
             .set_ex(&missing_sentinel_key, true, self.ttls.missing)
@@ -194,9 +245,11 @@ impl TileCachePort for RedisTileCacheAdapter {
         Ok(())
     }
 
-    async fn clear_missing_sentinel(&self, coord: TileCoord) -> AppResult<()> {
+    async fn clear_missing_sentinel(&self, world_id: &WorldId, coord: TileCoord) -> AppResult<()> {
         let mut conn = self.get_redis_connection().await?;
-        let missing_sentinel_key = self.redis_keys.missing_sentinel_key(coord.x, coord.y);
+        let missing_sentinel_key =
+            self.redis_keys
+                .missing_sentinel_key(world_id.as_uuid(), coord.x, coord.y);
 
         let _: () = conn.del(&missing_sentinel_key).await.map_err(|e| {
             warn!("Failed to clear missing sentinel for tile {}: {}", coord, e);
@@ -209,9 +262,16 @@ impl TileCachePort for RedisTileCacheAdapter {
         Ok(())
     }
 
-    async fn update_version_optimistically(&self, coord: TileCoord, version: u64) {
+    async fn update_version_optimistically(
+        &self,
+        world_id: &WorldId,
+        coord: TileCoord,
+        version: u64,
+    ) {
         if let Ok(mut conn) = self.get_redis_connection().await {
-            let current_key = self.redis_keys.current_key(coord.x, coord.y);
+            let current_key = self
+                .redis_keys
+                .current_key(world_id.as_uuid(), coord.x, coord.y);
             let _: () = conn
                 .set_ex(&current_key, version, self.ttls.current)
                 .await
@@ -219,11 +279,20 @@ impl TileCachePort for RedisTileCacheAdapter {
         }
     }
 
-    async fn store_palette_optimistically(&self, coord: TileCoord, version: u64, data: &[u8]) {
+    async fn store_palette_optimistically(
+        &self,
+        world_id: &WorldId,
+        coord: TileCoord,
+        version: u64,
+        data: &[i16],
+    ) {
         if let Ok(mut conn) = self.get_redis_connection().await {
-            let palette_key = self.redis_keys.palette_key(coord.x, coord.y, version);
+            let palette_key =
+                self.redis_keys
+                    .palette_key(world_id.as_uuid(), coord.x, coord.y, version);
+            let bytes: Vec<u8> = data.iter().flat_map(|&val| val.to_le_bytes()).collect();
             if let Err(e) = conn
-                .set_ex::<_, _, ()>(&palette_key, data, self.ttls.rgba)
+                .set_ex::<_, _, ()>(&palette_key, bytes, self.ttls.rgba)
                 .await
             {
                 warn!(
@@ -234,11 +303,11 @@ impl TileCachePort for RedisTileCacheAdapter {
         }
     }
 
-    async fn clear_cache(&self) -> AppResult<()> {
+    async fn clear_cache(&self, world_id: &WorldId) -> AppResult<()> {
         use tracing::info;
 
         let mut conn = self.get_redis_connection().await?;
-        let namespace_prefix = self.redis_keys.namespace_prefix();
+        let namespace_prefix = self.redis_keys.world_namespace_prefix(world_id.as_uuid());
 
         let mut cursor: u64 = 0;
         let mut redis_key_count = 0;

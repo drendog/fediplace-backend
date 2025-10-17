@@ -7,7 +7,7 @@ use crate::{
         incoming::subscriptions::SubscriptionUseCase, outgoing::subscription_port::SubscriptionPort,
     },
 };
-use domain::coords::TileCoord;
+use domain::{coords::TileCoord, world::WorldId};
 
 pub struct SubscriptionService {
     subscription_port: Arc<dyn SubscriptionPort>,
@@ -21,35 +21,65 @@ impl SubscriptionService {
     pub async fn subscribe(
         &self,
         ip: IpAddr,
+        world_id: &WorldId,
         tiles: &[TileCoord],
     ) -> AppResult<SubscriptionResult> {
-        self.subscription_port.subscribe(ip, tiles).await
+        self.subscription_port.subscribe(ip, world_id, tiles).await
     }
 
-    pub async fn unsubscribe(&self, ip: IpAddr, tiles: &[TileCoord]) -> AppResult<Vec<TileCoord>> {
-        self.subscription_port.unsubscribe(ip, tiles).await
-    }
-
-    pub async fn refresh_subscriptions(&self, ip: IpAddr, tiles: &[TileCoord]) -> AppResult<()> {
+    pub async fn unsubscribe(
+        &self,
+        ip: IpAddr,
+        world_id: &WorldId,
+        tiles: &[TileCoord],
+    ) -> AppResult<Vec<TileCoord>> {
         self.subscription_port
-            .refresh_subscriptions(ip, tiles)
+            .unsubscribe(ip, world_id, tiles)
+            .await
+    }
+
+    pub async fn refresh_subscriptions(
+        &self,
+        ip: IpAddr,
+        world_id: &WorldId,
+        tiles: &[TileCoord],
+    ) -> AppResult<()> {
+        self.subscription_port
+            .refresh_subscriptions(ip, world_id, tiles)
             .await
     }
 }
 
 #[async_trait::async_trait]
 impl SubscriptionUseCase for SubscriptionService {
-    async fn subscribe(&self, ip: IpAddr, tiles: &[TileCoord]) -> AppResult<SubscriptionResult> {
-        self.subscription_port.subscribe(ip, tiles).await
+    async fn subscribe(
+        &self,
+        ip: IpAddr,
+        world_id: &WorldId,
+        tiles: &[TileCoord],
+    ) -> AppResult<SubscriptionResult> {
+        self.subscription_port.subscribe(ip, world_id, tiles).await
     }
 
-    async fn unsubscribe(&self, ip: IpAddr, tiles: &[TileCoord]) -> AppResult<Vec<TileCoord>> {
-        self.subscription_port.unsubscribe(ip, tiles).await
-    }
-
-    async fn refresh_subscriptions(&self, ip: IpAddr, tiles: &[TileCoord]) -> AppResult<()> {
+    async fn unsubscribe(
+        &self,
+        ip: IpAddr,
+        world_id: &WorldId,
+        tiles: &[TileCoord],
+    ) -> AppResult<Vec<TileCoord>> {
         self.subscription_port
-            .refresh_subscriptions(ip, tiles)
+            .unsubscribe(ip, world_id, tiles)
+            .await
+    }
+
+    async fn refresh_subscriptions(
+        &self,
+        ip: IpAddr,
+        world_id: &WorldId,
+        tiles: &[TileCoord],
+    ) -> AppResult<()> {
+        self.subscription_port
+            .refresh_subscriptions(ip, world_id, tiles)
             .await
     }
 }

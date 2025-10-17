@@ -15,6 +15,8 @@ pub struct User {
     pub email: String,
     pub username: String,
     pub email_verified_at: Option<time::OffsetDateTime>,
+    pub available_charges: i32,
+    pub charges_updated_at: time::OffsetDateTime,
     pub roles: Vec<Role>,
 }
 
@@ -25,6 +27,8 @@ impl From<UserPublic> for User {
             email: user_public.email,
             username: user_public.username,
             email_verified_at: user_public.email_verified_at,
+            available_charges: user_public.available_charges,
+            charges_updated_at: user_public.charges_updated_at,
             roles: user_public.roles,
         }
     }
@@ -37,8 +41,8 @@ impl From<User> for UserPublic {
             email: user.email,
             username: user.username,
             email_verified_at: user.email_verified_at,
-            available_charges: 0,
-            charges_updated_at: time::OffsetDateTime::now_utc(),
+            available_charges: user.available_charges,
+            charges_updated_at: user.charges_updated_at,
             roles: user.roles,
         }
     }

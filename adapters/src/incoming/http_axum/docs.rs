@@ -23,7 +23,8 @@ use dto::responses::{
     BanResponse, PaintOkEnvelope, PaintPixelResponse, PixelHistoryEntry, PixelInfoResponse,
     TileImageResponse, UserResponse,
 };
-use handlers::palette::{PaletteEntry, PaletteResponse, SpecialColorEntry};
+use handlers::canvas::CanvasConfigResponse;
+use handlers::worlds::{CreateWorldRequest, PaletteEntry, WorldResponse};
 use utoipa::OpenApi;
 
 #[derive(OpenApi)]
@@ -32,7 +33,11 @@ use utoipa::OpenApi;
         handlers::tiles::serve_tile,
         handlers::tiles::serve_tile_head,
         handlers::tiles::paint_pixels_batch,
-        handlers::palette::get_palette,
+        handlers::canvas::get_canvas_config,
+        handlers::worlds::list_worlds,
+        handlers::worlds::get_world_by_id,
+        handlers::worlds::get_world_by_name,
+        handlers::worlds::create_world,
         handlers::pixel_info::get_pixel_info,
         handlers::health::health_check,
         handlers::auth::register_handler,
@@ -58,9 +63,10 @@ use utoipa::OpenApi;
             ApiResponseUser,
             PaintOkEnvelope,
             PaintPixelResponse,
+            CanvasConfigResponse,
+            WorldResponse,
+            CreateWorldRequest,
             PaletteEntry,
-            PaletteResponse,
-            SpecialColorEntry,
             RegisterRequest,
             LoginRequest,
             UpdateUsernameRequest,
@@ -93,7 +99,8 @@ use utoipa::OpenApi;
     tags(
         (name = "tiles", description = "Tile management operations - serve WebP tile images with caching and rate limiting"),
         (name = "painting", description = "Pixel painting operations - place pixels on tiles with rate limiting and backoff guidance"),
-        (name = "palette", description = "Color palette management - retrieve available colors for pixel painting"),
+        (name = "canvas", description = "Canvas configuration - retrieve default world ID, and other global settings in the future"),
+        (name = "worlds", description = "World management - list, retrieve, and create worlds with palette configuration, tile size, and pixel size"),
         (name = "pixel", description = "Pixel information operations - retrieve metadata about individual pixels"),
         (name = "auth", description = "Authentication and user management - register, login, logout, and user profile operations"),
         (name = "admin", description = "Admin operations - role management and user administration (requires admin privileges)"),

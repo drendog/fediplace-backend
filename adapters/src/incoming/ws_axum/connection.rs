@@ -16,6 +16,7 @@ use crate::incoming::ws_axum::WsAdapterPolicy;
 use crate::incoming::ws_axum::protocol::{ClientMessage, RejectedTile, WSMessage};
 use crate::shared::app_state::AppState;
 use domain::coords::TileCoord;
+use domain::world::WorldId;
 use fedi_wplace_application::{
     contracts::subscriptions::SubscriptionResult, error::AppError,
     ports::incoming::tiles::TilesQueryUseCase,
@@ -48,16 +49,18 @@ pub struct Connection {
     subscriptions: SubscriptionManager,
     client_ip: IpAddr,
     heartbeat_interval: Option<Interval>,
+    world_id: WorldId,
 }
 
 impl Connection {
-    pub fn new(socket: WebSocket, client_ip: IpAddr) -> (Self, SplitStream<WebSocket>) {
+    pub fn new(socket: WebSocket, client_ip: IpAddr, world_id: WorldId) -> (Self, SplitStream<WebSocket>) {
         let (sender, receiver) = socket.split();
         let connection = Self {
             socket_sender: sender,
             subscriptions: SubscriptionManager::new(),
             client_ip,
             heartbeat_interval: None,
+            world_id,
         };
         (connection, receiver)
     }
@@ -185,7 +188,7 @@ impl Connection {
 
         match app_state
             .subscription_service
-            .subscribe(self.client_ip, &requested_tile_coordinates)
+            .subscribe(self.client_ip, &self.world_id, &requested_tile_coordinates)
             .await
         {
             Ok(subscription_result) => {
@@ -272,7 +275,10 @@ impl Connection {
     ) -> ConnectionResult<()> {
         let tile_query_uc: &dyn TilesQueryUseCase = &*app_state.tiles_query_service;
         for tile_coordinate in newly_subscribed_tiles {
-            match tile_query_uc.get_tile_version(*tile_coordinate).await {
+            match tile_query_uc
+                .get_tile_version(&self.world_id, *tile_coordinate)
+                .await
+            {
                 Ok(current_version) => {
                     let version_message =
                         WSMessage::tile_version(*tile_coordinate, current_version);
@@ -301,7 +307,7 @@ impl Connection {
     ) -> ConnectionResult<()> {
         match state
             .subscription_service
-            .unsubscribe(self.client_ip, &tiles)
+            .unsubscribe(self.client_ip, &self.world_id, &tiles)
             .await
         {
             Ok(_redis_removed_tiles) => {
@@ -351,7 +357,7 @@ impl Connection {
 
         match state
             .subscription_service
-            .refresh_subscriptions(self.client_ip, &tiles)
+            .refresh_subscriptions(self.client_ip, &self.world_id, &tiles)
             .await
         {
             Ok(()) => {
@@ -385,7 +391,7 @@ impl Connection {
 
         if let Err(e) = state
             .subscription_service
-            .unsubscribe(self.client_ip, &subscribed_tiles)
+            .unsubscribe(self.client_ip, &self.world_id, &subscribed_tiles)
             .await
         {
             warn!(

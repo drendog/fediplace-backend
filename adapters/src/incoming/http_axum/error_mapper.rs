@@ -81,6 +81,8 @@ impl IntoResponse for HttpError {
 
             AppError::Forbidden => (StatusCode::FORBIDDEN, "Forbidden".to_string()),
 
+            AppError::NotFound { message } => (StatusCode::NOT_FOUND, message.clone()),
+
             AppError::EmailNotVerified => (
                 StatusCode::FORBIDDEN,
                 "Email verification is required".to_string(),

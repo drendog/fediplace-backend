@@ -62,6 +62,9 @@ pub enum AppError {
     #[error("Forbidden")]
     Forbidden,
 
+    #[error("Not found: {message}")]
+    NotFound { message: String },
+
     #[error("Email verification is required")]
     EmailNotVerified,
 

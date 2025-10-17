@@ -30,7 +30,7 @@ pub struct PaintRequest {
     #[cfg_attr(feature = "docs", schema(example = 256, minimum = 0))]
     pub py: usize,
     #[cfg_attr(feature = "docs", schema(example = 2))]
-    pub color_id: u8,
+    pub color_id: i16,
 }
 
 #[cfg_attr(feature = "docs", derive(ToSchema))]
@@ -49,7 +49,7 @@ pub struct BatchPixelPaint {
     #[cfg_attr(feature = "docs", schema(example = 256, minimum = 0))]
     pub py: usize,
     #[cfg_attr(feature = "docs", schema(example = 2))]
-    pub color_id: u8,
+    pub color_id: i16,
 }
 
 impl BatchPixelPaint {
