@@ -1,7 +1,6 @@
-use std::net::IpAddr;
-
 use crate::{contracts::subscriptions::SubscriptionResult, error::AppResult};
 use domain::{coords::TileCoord, world::WorldId};
+use std::net::IpAddr;
 
 #[async_trait::async_trait]
 pub trait SubscriptionPort: Send + Sync {
